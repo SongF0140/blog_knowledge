@@ -147,33 +147,15 @@ R = (3.3 - 2.0) / 0.005 = 260Ω → 常用 330Ω
 
 ### 3.1 模块调用关系
 
-```
-┌─────────────────────────────────────────────┐
-│                  app_main()                 │
-│              (main/main.c)                  │
-└───────────────────┬─────────────────────────┘
-                    │
-        ┌───────────┼───────────┐
-        │                       │
-        ▼                       ▼
-┌───────────────┐       ┌───────────────┐
-│   LED_init()  │       │ gpio_toggle() │
-│ (components/  │       │ (components/  │
-│   LED/LED.c)  │       │   LED/LED.c)  │
-└───────┬───────┘       └───────┬───────┘
-        │                       │
-        ▼                       ▼
-┌───────────────┐       ┌───────────────┐
-│  gpio_config()│       │gpio_set_level │
-│  (ESP-IDF API)│       │gpio_get_level │
-│               │       │  (ESP-IDF API)│
-└───────────────┘       └───────────────┘
-        │                       │
-        ▼                       ▼
-┌─────────────────────────────────────────────┐
-│           GPIO 硬件寄存器                   │
-│        (ESP32-S3 GPIO Matrix)              │
-└─────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    MAIN["app_main()<br/>main/main.c"]
+    MAIN --> LED["LED_init()<br/>components/LED/LED.c"]
+    MAIN --> TOGGLE["gpio_toggle()<br/>components/LED/LED.c"]
+    LED --> GPC["gpio_config()<br/>ESP-IDF API"]
+    TOGGLE --> GPS["gpio_set_level<br/>gpio_get_level<br/>ESP-IDF API"]
+    GPC --> HW["GPIO 硬件寄存器<br/>ESP32-S3 GPIO Matrix"]
+    GPS --> HW
 ```
 
 **调用链解释：**
@@ -286,29 +268,14 @@ void gpio_toggle(gpio_num_t gpio_num)
 
 **工作流程图：**
 
-```
-gpio_toggle(GPIO_NUM_38)
-         │
-         ▼
-┌─────────────────┐
-│gpio_get_level() │ ◄── 读取当前 GPIO 电平
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    │ 电平值？ │
-    └────┬────┘
-         │
-    ┌────┼────┐
-    │         │
-    ▼         ▼
-  高(1)      低(0)
-    │         │
-    ▼         ▼
-gpio_set_   gpio_set_
-level(0)    level(1)
-    │         │
-    ▼         ▼
- LED熄灭    LED点亮
+```mermaid
+flowchart TD
+    START["gpio_toggle(GPIO_NUM_38)"] --> READ["gpio_get_level()<br/>读取当前 GPIO 电平"]
+    READ --> DECIDE{"电平值？"}
+    DECIDE -->|"高(1)"| SET0["gpio_set_level(0)"]
+    DECIDE -->|"低(0)"| SET1["gpio_set_level(1)"]
+    SET0 --> OFF["LED 熄灭"]
+    SET1 --> ON["LED 点亮"]
 ```
 
 ### 4.3 主程序 - app_main()
@@ -339,20 +306,13 @@ void app_main(void)
 
 **执行时序图：**
 
-```
-时间轴 ─────────────────────────────────────────────────────►
-
-        │ LED_init() │  循环开始
-        │            │  │
-        ▼            ▼  ▼
-┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
-│ GPIO配置 │  │ toggle   │  │ Delay    │  │ toggle   │
-│          │  │ LED ON   │  │ 100 tick │  │ LED OFF  │
-└──────────┘  └──────────┘  └──────────┘  └──────────┘
-              │←─ 100tick ─→│←─ 100tick ─→│
-              │             │             │
-              ▼             ▼             ▼
-            LED闪烁周期（约每 200tick 完成一个闪烁周期）
+```mermaid
+flowchart LR
+    INIT["GPIO 配置<br/>LED_init()"] --> T1["toggle<br/>LED ON"]
+    T1 -->|"100 tick"| D1["Delay"]
+    D1 --> T2["toggle<br/>LED OFF"]
+    T2 -->|"100 tick"| D2["Delay"]
+    D2 -.->|"循环"| T1
 ```
 
 ---
@@ -385,45 +345,22 @@ vTaskDelay(pdMS_TO_TICKS(1000));  // 延时 1000ms，等价于 vTaskDelay(100)
 
 **阻塞 vs 非阻塞：**
 
-```
-┌─────────────────────────────────┐
-│         任务状态转换            │
-├─────────────────────────────────┤
-│                                 │
-│   Running ──► Blocked           │
-│   (运行)      (阻塞等待)         │
-│              vTaskDelay()       │
-│                                 │
-│   Blocked ──► Ready ──► Running │
-│   (超时)      (就绪)   (被调度) │
-│                                 │
-└─────────────────────────────────┘
+```mermaid
+stateDiagram-v2
+    Running --> Blocked: vTaskDelay()<br/>（阻塞等待）
+    Blocked --> Ready: 超时到达
+    Ready --> Running: 被调度器选中
 ```
 
 **`vTaskDelay()` 是阻塞延时，不是忙等待**——任务进入 Blocked 状态后，CPU 会去执行其他就绪任务，而不是空转。这与裸机编程中的 `delay_ms()`（通常用 `for` 循环空耗 CPU）有本质区别。
 
 ### 5.2 FreeRTOS Tick 流程
 
-```
-硬件定时器中断（每 10ms）
-         │
-         ▼
-┌─────────────────┐
-│  Tick ISR       │ ◄── SysTick 中断服务程序
-│  增加 tick 数   │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ 检查阻塞任务     │
-│ 是否超时         │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ 超时任务 → Ready │
-│ 触发调度器       │
-└─────────────────┘
+```mermaid
+flowchart TD
+    A["硬件定时器中断<br/>（每 10ms）"] --> B["Tick ISR<br/>增加 tick 数<br/>（SysTick 中断服务程序）"]
+    B --> C["检查阻塞任务<br/>是否超时"]
+    C --> D["超时任务 → Ready<br/>触发调度器"]
 ```
 
 **为什么 Tick ISR 中不能做耗时操作？** ISR 运行在中断上下文，会抢占所有任务。如果 ISR 执行时间过长（超过一个 tick 周期），会导致 tick 丢失、系统时钟漂移，甚至触发看门狗复位。Tick ISR 应该只做两件事：递增 tick 计数、检查超时链表。其他逻辑（如任务切换）由调度器在任务上下文中完成。

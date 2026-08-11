@@ -56,22 +56,16 @@ draft: false
 
 **统一实验场景**：按键按下 → LED 以不同频率闪烁 → 串口打印按键次数。
 
-```
-        ┌──────────────┐
-        │    按键按下   │
-        └──────┬───────┘
-               │
-        ┌──────▼───────┐
-        │  按键消抖处理  │
-        └──────┬───────┘
-               │
-        ┌──────▼───────┐
-        │  计数变量 +1  │
-        └──┬───────┬───┘
-           │       │
-    ┌──────▼──┐ ┌──▼──────┐
-    │ LED 闪烁 │ │ 串口打印 │（两者必须同时进行，互不阻塞）
-    └─────────┘ └─────────┘
+```mermaid
+flowchart TD
+    A["按键按下"]
+    B["按键消抖处理"]
+    C["计数变量 +1"]
+    D["LED 闪烁"]
+    E["串口打印"]
+    A --> B --> C
+    C --> D
+    C --> E
 ```
 
 ---
@@ -209,26 +203,15 @@ Task_LED       Task_Key       Task_UART
 
 #### 任务切换过程（PendSV 异常）
 
-```
-  任务 A 运行                        任务 B 运行
-  ─────────│                         ─────────│
-           │ SysTick 中断触发                   │
-           ▼                                    │
-  ┌─────────────────┐                          │
-  │ ① CPU 自动压栈   │                          │
-  │   (R0-R3,R12,    │                          │
-  │    LR,PC,xPSR)   │                          │
-  ├─────────────────┤                          │
-  │ ② 选择任务 B     │                          │
-  ├─────────────────┤                          │
-  │ ③ 保存 SP→TCB_A │                          │
-  ├─────────────────┤                          │
-  │ ④ TCB_B→加载 SP │──────────────────────────►│
-  ├─────────────────┤                          │
-  │ ⑤ 异常返回       │  ⑥ CPU 自动出栈           │
-  └─────────────────┘                          │
-                                               ▼
-                                        任务 B 继续执行
+```mermaid
+flowchart TD
+    A["SysTick 中断触发<br/>任务 A 正在运行"]
+    B["PendSV 处理:<br/>① CPU 自动压栈<br/>(R0-R3,R12,LR,PC,xPSR)"]
+    C["② 选择任务 B"]
+    D["③ 保存 A 的 SP → TCB_A"]
+    E["④ TCB_B → 加载 SP"]
+    F["⑤ 异常返回<br/>⑥ CPU 自动出栈<br/>任务 B 继续执行"]
+    A --> B --> C --> D --> E --> F
 ```
 
 整个切换只保存和恢复寄存器现场，不涉及内存映射表切换，开销极小。
@@ -237,13 +220,18 @@ Task_LED       Task_Key       Task_UART
 
 Cortex-M3 有两个栈指针寄存器：**MSP（主栈指针）** 和 **PSP（进程栈指针）**。
 
-```
-  ┌───────────────┐          ┌───────────────┐
-  │  MSP（主栈）   │          │  PSP（进程栈）  │
-  ├───────────────┤          ├───────────────┤
-  │ • 中断/异常处理 │          │ • 任务代码执行  │
-  │ • 复位后默认   │          │ • 每个任务独立  │
-  └───────────────┘          └───────────────┘
+```mermaid
+flowchart LR
+    subgraph MSP["MSP（主栈）"]
+        direction TB
+        m1["• 中断/异常处理"]
+        m2["• 复位后默认"]
+    end
+    subgraph PSP["PSP（进程栈）"]
+        direction TB
+        p1["• 任务代码执行"]
+        p2["• 每个任务独立"]
+    end
 ```
 
 **为什么 RTOS 用 PSP 做任务栈、MSP 做中断栈？** 分离后 PSP 溢出最多毁掉当前任务，MSP 受保护——中断和内核始终安全。
@@ -296,13 +284,15 @@ Wi-Fi / 蓝牙的底层协议栈代码量超过**百万行**。ESP-IDF 对 FreeR
 
 #### 经典双核场景
 
-```
-  Core 0 (PRO_CPU)                    Core 1 (APP_CPU)
-  ┌──────────────────┐                ┌──────────────────┐
-  │  LVGL 图形界面    │  ← xQueue →   │  Wi-Fi 网络通信   │
-  │  动画丝滑流畅     │                │  断线重连时阻塞   │
-  │  不被网络阻塞影响  │                │  不影响界面刷新   │
-  └──────────────────┘                └──────────────────┘
+```mermaid
+flowchart LR
+    subgraph CORE0["Core 0 (PRO_CPU)"]
+        c0["LVGL 图形界面<br/>动画丝滑流畅<br/>不被网络阻塞影响"]
+    end
+    subgraph CORE1["Core 1 (APP_CPU)"]
+        c1["Wi-Fi 网络通信<br/>断线重连时阻塞<br/>不影响界面刷新"]
+    end
+    CORE0 <-- "xQueue" --> CORE1
 ```
 
 #### 任务与线程的关系
@@ -323,18 +313,18 @@ Xtensa LX7 的寄存器文件有 64 个物理寄存器，但指令只能访问 1
 
 ### 2.1 51 单片机的硬件栈
 
-```
-          51 内部 RAM
-    ┌─────────────────────┐ 低地址 0x00
-    │  R0 ~ R7 (工作寄存器) │
-    │   栈区 (向上增长)     │ ← SP 增大 →
-    │  ┌──────────────┐   │
-    │  │  返回地址      │   │
-    │  ├──────────────┤   │
-    │  │  保护的寄存器   │   │
-    │  └──────────────┘   │
-    │   SFR 寄存器区       │ 高地址 0xFF
-    └─────────────────────┘
+```mermaid
+flowchart TD
+    subgraph RAM51["51 内部 RAM"]
+        direction TB
+        REG["低地址 0x00<br/>R0 ~ R7 (工作寄存器)"]
+        subgraph STACK_AREA["栈区 (SP 增大 →)"]
+            RA["返回地址"]
+            PR["保护的寄存器"]
+        end
+        SFR["高地址 0xFF<br/>SFR 寄存器区"]
+    end
+    REG --> STACK_AREA --> SFR
 ```
 
 - **专用 SP 寄存器**：8 位物理寄存器
@@ -361,29 +351,28 @@ Xtensa 架构中，通用寄存器 `A1` 在汇编中别名为 `sp`。
 
 #### 多任务下的 SP 管理
 
-```
-                    物理 sp 寄存器 (A1)
-              ┌────────────┬────────────┐
-         ┌────▼────┐  ┌────▼────┐  ┌────▼────┐
-         │ TCB_A   │  │ TCB_B   │  │ TCB_C   │
-         │ pxTop   │  │ pxTop   │  │ pxTop   │
-         │ OfStack │  │ OfStack │  │ OfStack │
-         └─────────┘  └─────────┘  └─────────┘
+```mermaid
+flowchart TD
+    SP["物理 sp 寄存器 (A1)"]
+    SP --> TCB_A["TCB_A<br/>pxTop<br/>OfStack"]
+    SP --> TCB_B["TCB_B<br/>pxTop<br/>OfStack"]
+    SP --> TCB_C["TCB_C<br/>pxTop<br/>OfStack"]
 ```
 
 任务切换时：**硬件 sp 值** → 存入当前 TCB → 从下一 TCB 加载 → 写回硬件 sp。
 
 #### 深入：栈向下增长的物理原因
 
-```
-  ESP32-S3 物理内存布局 (简化)
-  ┌──────────────────┐ 高地址
-  │  DRAM (数据)      │ ← 全局变量 / .bss
-  ├──────────────────┤
-  │  DRAM (堆)        │ ← 堆向上增长 →→→
-  │  ...             │
-  │  DRAM (栈)        │ ← 栈向下增长 ←←←
-  └──────────────────┘ 低地址
+```mermaid
+flowchart TD
+    subgraph MEM["ESP32-S3 物理内存布局"]
+        direction TB
+        DATA["高地址: DRAM (数据)<br/>全局变量 / .bss"]
+        HEAP["DRAM (堆) ← 向上增长 →→→"]
+        STACK2["DRAM (栈) ← 向下增长 ←←←"]
+        LOW["低地址"]
+    end
+    DATA --> HEAP --> STACK2 --> LOW
 ```
 
 栈向下增长，堆向上增长，两者对向扩张——**最大化利用中间的空闲区域**。只要 `栈顶 > 堆顶` 就安全。
@@ -394,15 +383,24 @@ Xtensa 架构中，通用寄存器 `A1` 在汇编中别名为 `sp`。
 
 ### 3.1 数据结构对比
 
-```
-    FreeRTOS 的 TCB (几十字节)         Linux 的 task_struct (数 KB)
-    ┌─────────────────────────┐        ┌──────────────────────────┐
-    │  pxTopOfStack (栈顶)     │        │  mm (内存映射表,页表基址)  │
-    │  uxPriority   (优先级)   │        │  fs  (文件描述符表)        │
-    │  eCurrentState(状态)     │        │  sighand (信号处理)       │
-    │  pxStack      (栈基址)   │        │  pid / tgid (ID)         │
-    │  pcTaskName   (名称)     │        │  ... (还有几十个字段)       │
-    └─────────────────────────┘        └──────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph TCB["FreeRTOS TCB (几十字节)"]
+        direction TB
+        t1["pxTopOfStack (栈顶)"]
+        t2["uxPriority (优先级)"]
+        t3["eCurrentState (状态)"]
+        t4["pxStack (栈基址)"]
+        t5["pcTaskName (名称)"]
+    end
+    subgraph PCB["Linux task_struct (数 KB)"]
+        direction TB
+        p1["mm (内存映射表,页表基址)"]
+        p2["fs (文件描述符表)"]
+        p3["sighand (信号处理)"]
+        p4["pid / tgid (ID)"]
+        p5["... (还有几十个字段)"]
+    end
 ```
 
 **为什么 FreeRTOS 叫 TCB？** 因为没有进程概念。TCB 只存调度器必需的最小信息——没有 `mm`（无 MMU）、没有 `files`（无 VFS）。
@@ -450,15 +448,20 @@ Xtensa 架构中，通用寄存器 `A1` 在汇编中别名为 `sp`。
 
 ### 4.2 有 MMU：虚拟地址模式
 
-```
-  进程 A                          进程 B
-  虚拟 0x40001000                 虚拟 0x40001000
-        │                               │
-   ┌────▼────────┐               ┌──────▼──────┐
-   │    MMU      │               │    MMU      │
-   │  查页表      │               │  查页表      │
-   └────┬────────┘               └──────┬──────┘
-   物理 0x80002000                 物理 0x90001000  (完全隔离！)
+```mermaid
+flowchart TD
+    subgraph PA["进程 A"]
+        VA_A["虚拟 0x40001000"]
+        MMU_A["MMU<br/>查页表"]
+        PA_A["物理 0x80002000"]
+        VA_A --> MMU_A --> PA_A
+    end
+    subgraph PB["进程 B"]
+        VA_B["虚拟 0x40001000"]
+        MMU_B["MMU<br/>查页表"]
+        PA_B["物理 0x90001000 (完全隔离!)"]
+        VA_B --> MMU_B --> PA_B
+    end
 ```
 
 - 进程 A 野指针访问非法地址 → MMU 阻断 → Linux 发 `SIGSEGV` → **仅杀死该进程**
@@ -507,14 +510,15 @@ ESP-IDF 的 panic handler 会打印寄存器转储、栈回溯和当前任务名
 
 #### 深入：FreeRTOS 的栈溢出检测——Stack Canary
 
-```
-  任务栈布局 (向下增长)
-  ┌──────────────┐ 高地址
-  │   调用帧      │
-  │   局部变量    │ ← SP 向下移动
-  ├──────────────┤
-  │  0xA5A5A5A5  │ ← Canary（金丝雀）
-  └──────────────┘ 低地址
+```mermaid
+flowchart TD
+    subgraph STACK_CANARY["任务栈布局 (向下增长)"]
+        direction TB
+        HIGH["高地址: 调用帧<br/>局部变量 ← SP 向下移动"]
+        CANARY["0xA5A5A5A5 ← Canary（金丝雀）"]
+        LOW["低地址"]
+    end
+    HIGH --> CANARY --> LOW
 ```
 
 调度器每次切换任务时检查：如果 `pxStack[0] != 0xA5A5A5A5`，说明栈溢出已发生。**缺陷**：Canary 只能检测"已经发生"的溢出，无法阻止。
@@ -542,18 +546,16 @@ ESP-IDF 的 panic handler 会打印寄存器转储、栈回溯和当前任务名
 
 #### 深入：链接脚本 — 程序的六个"地盘"
 
-```
-  ┌──────────────┐ 低地址
-  │  .text       │ ← 代码段（Flash，只读）
-  │  .rodata     │ ← 只读数据（Flash）
-  ├──────────────┤
-  │  .data       │ ← 已初始化全局变量（RAM，启动时从 Flash 拷贝）
-  │  .bss        │ ← 未初始化全局变量（RAM，启动时清零，不占 Flash 空间！）
-  ├──────────────┤
-  │  .heap       │ ← 堆（向上增长）
-  │     ...      │
-  │  .stack      │ ← 栈（向下增长）
-  └──────────────┘ 高地址
+```mermaid
+flowchart TD
+    subgraph LINKER["内存分段"]
+        direction TB
+        TEXT["低地址: .text (代码段，Flash，只读)<br/>.rodata (只读数据，Flash)"]
+        DATA_SEC[".data (已初始化全局变量，RAM)<br/>.bss (未初始化全局变量，RAM，不占Flash空间!)"]
+        HEAP_SEC[".heap (堆，向上增长)<br/>..."]
+        STACK_SEC[".stack (栈，向下增长)<br/>高地址"]
+    end
+    TEXT --> DATA_SEC --> HEAP_SEC --> STACK_SEC
 ```
 
 #### 深入：volatile — 让编译器"别自作聪明"
@@ -593,25 +595,14 @@ volatile uint32_t *p = (volatile uint32_t *)0x3FF44000;
 
 ### 8.1 架构层次
 
-```
-  ┌──────────────────────────────────┐
-  │       Arduino 草图 (.ino)         │
-  │  setup() / loop() / digitalWrite │
-  └──────────────┬───────────────────┘
-  ┌──────────────▼───────────────────┐
-  │     ESP32 Arduino Core           │  ← 适配层
-  │  digitalWrite → gpio_set_level   │
-  │  delay()      → vTaskDelay       │
-  └──────────────┬───────────────────┘
-  ┌──────────────▼───────────────────┐
-  │         ESP-IDF                  │  ← 乐鑫官方 SDK
-  └──────────────┬───────────────────┘
-  ┌──────────────▼───────────────────┐
-  │         FreeRTOS                 │  ← RTOS 内核
-  └──────────────┬───────────────────┘
-  ┌──────────────▼───────────────────┐
-  │     ESP32-S3 硬件                │
-  └──────────────────────────────────┘
+```mermaid
+flowchart TD
+    ARDUINO["Arduino 草图 (.ino)<br/>setup() / loop() / digitalWrite"]
+    ARDUINO_CORE["ESP32 Arduino Core (适配层)<br/>digitalWrite → gpio_set_level<br/>delay() → vTaskDelay"]
+    ESPIDF["ESP-IDF (乐鑫官方 SDK)"]
+    FREERTOS["FreeRTOS (RTOS 内核)"]
+    HW["ESP32-S3 硬件"]
+    ARDUINO --> ARDUINO_CORE --> ESPIDF --> FREERTOS --> HW
 ```
 
 **Arduino 是外壳，ESP-IDF 是引擎。**
@@ -639,35 +630,13 @@ volatile uint32_t *p = (volatile uint32_t *)0x3FF44000;
 
 ### 9.1 启动流程图解
 
-```
-┌─────────────────────────┐
-│    上电 / 复位            │   POR (Power-On Reset) 或 RTC_WDT 超时触发
-└───────────┬─────────────┘
-            ▼
-┌─────────────────────────┐
-│  一级 Bootloader (ROM)   │  芯片出厂固化，不可修改。约 4 KB
-│ ① 读取 GPIO 启动模式      │  GPIO0=0 → 下载模式；GPIO0=1 → 正常启动
-│ ② 初始化 Flash SPI 时序   │  配置 SPI 引脚、时钟分频
-│ ③ 加载二级 Bootloader     │  从 Flash 0x0000 读 32 KB → 校验 CRC → 跳转
-└───────────┬─────────────┘
-            ▼
-┌─────────────────────────┐
-│  二级 Bootloader          │  ESP-IDF 提供，可通过 OTA 升级。约 32 KB
-│ ① 初始化 PSRAM           │  配置 Octal SPI PSRAM 时序（若启用）
-│ ② 加载分区表              │  从 Flash 0x8000 读取分区表
-│ ③ 选择 App 分区           │  检查 OTA Data → 选择 factory/ota_0/ota_1
-│    支持 OTA 回滚           │  固件校验失败 → 自动回滚到上一版本
-│ ④ 加载 App 到 RAM/Flash   │  配置 XIP（片内执行）或加载到 RAM
-└───────────┬─────────────┘
-            ▼
-┌─────────────────────────┐
-│  应用程序入口             │  call_start_cpu0()
-│ ① 硬件初始化              │  配置 Cache、初始化片内外设（esp_rom_*）
-│ ② 内存初始化              │  复制 .data 段、清零 .bss 段、设置堆
-│ ③ FreeRTOS 初始化         │  (详见 9.3) 创建 IDLE/Timer 任务、启动调度器
-│ ④ 初始系统组件            │  esp_event_loop、esp_netif、nvs_flash 等
-│ ⑤ 调用 app_main()         │  用户程序入口，在 main 任务（优先级=1）中运行
-└─────────────────────────┘
+```mermaid
+flowchart TD
+    POR["上电 / 复位<br/>POR 或 RTC_WDT 超时触发"]
+    ROM["一级 Bootloader (ROM)<br/>芯片出厂固化，不可修改。约 4 KB<br/>① 读取 GPIO 启动模式<br/>GPIO0=0→下载；GPIO0=1→正常启动<br/>② 初始化 Flash SPI 时序<br/>③ 加载二级 Bootloader<br/>从 Flash 0x0000 读 32 KB → 校验 CRC → 跳转"]
+    SECOND["二级 Bootloader<br/>ESP-IDF 提供，可 OTA 升级。约 32 KB<br/>① 初始化 PSRAM<br/>② 加载分区表 (Flash 0x8000)<br/>③ 选择 App 分区<br/>检查 OTA Data → 选 factory/ota_0/ota_1<br/>支持 OTA 回滚<br/>④ 加载 App 到 RAM/Flash"]
+    APP["应用程序入口 call_start_cpu0()<br/>① 硬件初始化<br/>② 内存初始化 (复制 .data, 清零 .bss, 设置堆)<br/>③ FreeRTOS 初始化<br/>创建 IDLE/Timer 任务、启动调度器<br/>④ 初始系统组件<br/>⑤ 调用 app_main()"]
+    POR --> ROM --> SECOND --> APP
 ```
 
 **启动时间线**：
@@ -769,16 +738,12 @@ NVS 将 Flash 分区划分为等大扇区（通常 4 KB）。写入不是"原地
 2. 当活跃扇区满时，把有效条目压缩拷贝到新扇区，擦除旧扇区
 3. 两步提交：先写数据，再写"提交"标记——掉电也安全
 
-```
-  NVS 写入过程:
-  ┌─────────┐  ┌─────────┐  ┌─────────┐
-  │Sector 0 │  │Sector 0 │  │Sector 0 │
-  │boot=42  │  │boot=42  │  │boot=42  │
-  │         │  │boot=43  │  │(废弃)   │
-  └─────────┘  └─────────┘  └─────────┘
-                         │
-                         └─ 扇区满 → 压缩拷贝到 Sector1
-                            boot=43(有效) + 擦除 Sector0
+```mermaid
+flowchart LR
+    S1["Sector 0<br/>boot=42"]
+    S2["Sector 0<br/>boot=42<br/>boot=43 (新追加)"]
+    S3["Sector 0 (废弃)<br/>Sector 1 压缩拷贝<br/>boot=43 (有效)<br/>擦除 Sector 0"]
+    S1 -- "追加条目" --> S2 -- "扇区满 → 压缩拷贝" --> S3
 ```
 
 **为什么不用 FAT 文件系统存配置？** FAT 的每个文件至少占一个簇（通常 4 KB），存一个 4 字节的 `boot_count` 浪费 4092 字节。NVS 的一个键值对只占约 16~32 字节——效率高两个数量级。此外 FAT 没有事务性写入——写 `boot_count` 时掉电可能导致文件系统损坏，NVS 的两阶段提交保证了原子性。
@@ -787,16 +752,16 @@ NVS 将 Flash 分区划分为等大扇区（通常 4 KB）。写入不是"原地
 
 SPIFFS（SPI Flash File System）是为 NOR Flash 设计的轻量级文件系统：
 
-```
-  SPIFFS 分区布局:
-  ┌──────────┐
-  │ 超级块    │ ← 文件系统元数据（Magic, 总大小, 块大小）
-  ├──────────┤
-  │ Block 0  │ ← 多个 Page (256B/Page)
-  │ Block 1  │
-  │ ...      │
-  │ Block N  │
-  └──────────┘
+```mermaid
+flowchart TD
+    subgraph SPIFFS_LAYOUT["SPIFFS 分区布局"]
+        direction TB
+        SUPER["超级块<br/>文件系统元数据 (Magic, 总大小, 块大小)"]
+        B0["Block 0 ← 多个 Page (256B/Page)"]
+        B1["Block 1"]
+        BN["Block N"]
+    end
+    SUPER --> B0 --> B1 --> BN
 ```
 
 - **写时复制（COW）**：修改文件 → 写新页 → 更新元数据指向新页 → 旧页标记为可回收
@@ -998,32 +963,23 @@ DMA 优势：UART 收 1KB 数据时，DMA 自动搬到 RAM（约 8.7ms），CPU 
 
 ### 12.4 三阶段决策树
 
-```
-             外设事件发生
-                  │
-         ┌───────▼───────┐
-         │ 数据量 > 32B？│
-         └───┬───────┬───┘
-            YES     NO
-             │       │
-             ▼       ▼
-        ┌────────┐ ┌────────────┐
-        │  DMA   │ │ 频率 > 100  │
-        └────────┘ │ 次/秒？     │
-                   └──┬─────┬───┘
-                    YES    NO
-                     │      │
-                     ▼      ▼
-                ┌────────┐ ┌────────────┐
-                │  DMA   │ │ 离散/连续？ │
-                └────────┘ └──┬─────┬───┘
-                         离散    连续
-                          │       │
-                          ▼       ▼
-                     ┌────────┐┌────────┐
-                     │  中断   ││  DMA   │
-                     │(Exti)  ││        │
-                     └────────┘└────────┘
+```mermaid
+flowchart TD
+    EVENT["外设事件发生"]
+    Q1{"数据量 > 32B?"}
+    DMA1["DMA"]
+    Q2{"频率 > 100 次/秒?"}
+    Q3{"离散/连续?"}
+    DMA2["DMA"]
+    INT["中断 (Exti)"]
+    DMA3["DMA"]
+    EVENT --> Q1
+    Q1 -->|YES| DMA1
+    Q1 -->|NO| Q2
+    Q2 -->|YES| DMA2
+    Q2 -->|NO| Q3
+    Q3 -->|离散| INT
+    Q3 -->|连续| DMA3
 ```
 
 #### 对照你的项目

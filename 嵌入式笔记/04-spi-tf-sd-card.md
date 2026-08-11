@@ -105,14 +105,10 @@ draft: false
 
 SD 卡和 TF 卡本质上**是同一种东西的两个外观版本**：
 
-```
-        SD 大卡（32×24×2.1mm）      TF 卡 = microSD（15×11×1.0mm）
-         ┌──────────────┐           ┌─────┐
-         │  ████████████│           │░░░░░│
-         │  ██  SD ██   │           │░░░░░│
-         │  ████████████│           └─────┘
-         └──────────────┘             ↑
-           9-pin 金手指              8-pin 金手指
+```mermaid
+flowchart LR
+    SD["SD 大卡<br/>32×24×2.1mm<br/>9-pin 金手指"]
+    TF["TF 卡 (microSD)<br/>15×11×1.0mm<br/>8-pin 金手指"]
 ```
 
 | 对比维度 | SD 大卡 | TF 卡（microSD） |
@@ -149,21 +145,13 @@ ESP32-S3 选择 SPI 的理由：
 
 TF 卡内部是一颗 **NAND Flash** 芯片加一个**微型控制器**：
 
-```
-┌─────────────────────────────────────────┐
-│              TF 卡内部                    │
-│  ┌─────────┐         ┌───────────────┐  │
-│  │  NAND   │  ◄───►  │  微型控制器    │  │
-│  │  Flash  │         │  (FTL 层)     │  │
-│  │  存储体  │         │  坏块管理     │  │
-│  │         │         │  磨损均衡     │  │
-│  │         │         │  ECC 纠错     │  │
-│  └─────────┘         └───────┬───────┘  │
-│                               │          │
-│                        SPI / SDIO 接口   │
-└───────────────────────────────┼──────────┘
-                                │
-                     MOSI MISO CLK CS
+```mermaid
+flowchart LR
+    subgraph TF["TF 卡内部"]
+        NAND["NAND Flash<br/>存储体"] <--> MCU["微型控制器<br/>(FTL 层)<br/>坏块管理<br/>磨损均衡<br/>ECC 纠错"]
+        MCU --> SPI["SPI / SDIO 接口"]
+    end
+    SPI --> PINS["MOSI MISO CLK CS"]
 ```
 
 微型控制器做的事：
@@ -197,16 +185,16 @@ SDHC/SDXC **强制要求 Block（512 字节）寻址**——`CMD17` 的参数不
 
 ### 2.3 顺序 vs 随机读写
 
-```
-顺序读写（Sequential）：
- ┌─┬─┬─┬─┬─┬─┬─┬─┐
- │0│1│2│3│4│5│6│7│  → 连续扇区，速度最快
- └─┴─┴─┴─┴─┴─┴─┴─┘
-
-随机读写（Random）：
- ┌──────────────────────────────────────────┐
- │扇区0 │...│扇区73 │...│扇区512 │...│扇区8│  → 跳来跳去，慢
- └──────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph SEQ["顺序读写 (Sequential)：连续扇区，速度最快"]
+        direction LR
+        S["扇区 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7"]
+    end
+    subgraph RND["随机读写 (Random)：跳来跳去，慢"]
+        direction LR
+        R["扇区0 ... 扇区73 ... 扇区512 ... 扇区8"]
+    end
 ```
 
 | 操作类型 | Class 10 卡典型速度 | 用途 |
@@ -253,11 +241,9 @@ fclose(f);
 
 FAT（File Allocation Table）是 SD 卡最通用的文件系统：
 
-```
-┌───────────┬───────────┬───────────┬───────────┬───────────┐
-│   MBR     │    FAT 表  │   根目录  │   数据区   │   数据区   │
-│  (扇区0)   │  (簇链表)  │ (文件索引) │ (簇2开始)  │   ...     │
-└───────────┴───────────┴───────────┴───────────┴───────────┘
+```mermaid
+flowchart LR
+    MBR2["MBR<br/>(扇区0)"] --> FAT2["FAT 表<br/>(簇链表)"] --> ROOT2["根目录<br/>(文件索引)"] --> DATA2["数据区<br/>(簇2开始)"] --> D22["数据区<br/>..."]
 ```
 
 **FAT 表的本质：一个扇区级的"链表"**
@@ -284,28 +270,12 @@ FAT 表：   簇5 → 簇8 → 簇12 → EOF
 
 **FATFS** 是一个很轻量的开源 FAT 文件系统实现（纯 C 语言），专为嵌入式设计。它不依赖操作系统，只做一件事：**解析 FAT 表、管理目录、读写文件**。
 
-```
- FATFS 在 ESP-IDF 中的位置：
-
- ┌────────────┐
- │ 你的代码    │  fopen / fread / fwrite / fclose
- └─────┬──────┘
-       │  C 标准库调用
- ┌─────▼──────┐
- │   VFS      │  ESP-IDF 虚拟文件系统（分发路由）
- └─────┬──────┘
-       │  路由到 /sdcard 路径
- ┌─────▼──────┐
- │   FATFS    │  解析 FAT 表、计算扇区号、管理目录项
- └─────┬──────┘
-       │  块读写请求（扇区号 + 缓冲区）
- ┌─────▼──────┐
- │ SDSPI 驱动  │  把扇区号转换成 SPI CMD17/CMD24 命令
- └─────┬──────┘
-       │  SPI 帧
- ┌─────▼──────┐
- │  TF 卡     │
- └────────────┘
+```mermaid
+flowchart TD
+    APP["你的代码<br/>fopen / fread / fwrite / fclose"] -->|"C 标准库调用"| VFS["VFS<br/>ESP-IDF 虚拟文件系统<br/>(分发路由)"]
+    VFS -->|"路由到 /sdcard 路径"| FATFS_V["FATFS<br/>解析 FAT 表、计算扇区号、管理目录项"]
+    FATFS_V -->|"块读写请求 (扇区号 + 缓冲区)"| SDSPI["SDSPI 驱动<br/>把扇区号转换成 SPI CMD17/CMD24 命令"]
+    SDSPI -->|"SPI 帧"| TFCARD["TF 卡"]
 ```
 
 FATFS 的特性：
@@ -377,24 +347,29 @@ esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot, &mount, &card)
 
 ### 5.1 硬件连接总览
 
-```
-          ESP32-S3                          TF 卡模块（microSD）
-  ┌──────────────────────┐           ┌────────────────────────┐
-  │                      │           │                        │
-  │  SPI2                │           │  CS   ←── GPIO 2      │
-  │  ┌────────────────┐  │           │  MOSI ←── GPIO 11     │
-  │  │ MOSI (GPIO 11) ├──┼───────────┼─► MOSI                │
-  │  │ MISO (GPIO 13) │◄─┼───────────┼── MISO                │
-  │  │ CLK  (GPIO 12) ├──┼───────────┼─► CLK                 │
-  │  │ CS   (GPIO 2)  ├──┼───────────┼─► CS                  │
-  │  └────────────────┘  │           │                        │
-  │                      │           │  3.3V  ←── ESP 3.3V   │
-  │  SPI2                │           │  GND  ←── ESP GND     │
-  │  (复用给 LCD)         │           └────────────────────────┘
-  │  ┌────────────────┐  │
-  │  │ CS_LCD(GPIO 48)│  │   ← LCD 用独立的 CS，与 TF 卡
-  │  └────────────────┘  │     共享 SPI2 总线，分时复用
-  └──────────────────────┘
+```mermaid
+flowchart LR
+    subgraph ESP32["ESP32-S3"]
+        direction TB
+        MOSI_E["MOSI (GPIO 11)"]
+        MISO_E["MISO (GPIO 13)"]
+        CLK_E["CLK (GPIO 12)"]
+        CS_E["CS (GPIO 2)"]
+        CS_LCD["CS_LCD (GPIO 48)<br/>LCD 独立 CS<br/>共享 SPI2 分时复用"]
+    end
+    subgraph TF["TF 卡模块 (microSD)"]
+        direction TB
+        T_MOSI["MOSI"]
+        T_MISO["MISO"]
+        T_CLK["CLK"]
+        T_CS["CS"]
+        T_VCC["3.3V"]
+        T_GND["GND"]
+    end
+    MOSI_E --> T_MOSI
+    T_MISO --> MISO_E
+    CLK_E --> T_CLK
+    CS_E --> T_CS
 ```
 
 > 关键设计：LCD 和 TF 卡**共享 SPI2（MOSI 11、MISO 13、CLK 12）**，通过两个独立的 CS 片选线（GPIO 48 给 LCD、GPIO 2 给 TF 卡）分时访问。
@@ -403,14 +378,15 @@ esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot, &mount, &card)
 
 SD 卡命令是固定长度的 6 字节帧，通过 SPI MOSI 发送：
 
+```mermaid
+flowchart LR
+    B0["Byte0<br/>0 1 xxxxx<br/>命令索引"] --> B1["Byte1<br/>地址[31:24]"]
+    B1 --> B2["Byte2<br/>地址[23:16]"]
+    B2 --> B3["Byte3<br/>地址[15:8]"]
+    B3 --> B4["Byte4<br/>地址[7:0]"]
+    B4 --> B5["Byte5<br/>CRC"]
 ```
- SD 命令帧（SPI 模式）
- ┌──────────┬──────────┬──────────┬──────────┬──────────┬──────────┐
- │ Byte0    │ Byte1    │ Byte2    │ Byte3    │ Byte4    │ Byte5    │
- │ 0 1 xxxxx│地址[31:24]│地址[23:16]│地址[15:8]│地址[7:0] │ CRC      │
- └──────────┴──────────┴──────────┴──────────┴──────────┴──────────┘
-   命令索引   32-bit 参数（扇区号 / 字节偏移）
-```
+> Byte1~4 组成 32-bit 参数（扇区号 / 字节偏移）
 
 常用命令：
 

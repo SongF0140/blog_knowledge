@@ -102,28 +102,14 @@ gptimer_start(handle);                     // 5. 启动
 - 产生中断信号，调用用户注册的回调函数
 - 自动重载计数值（周期模式）或停止（单次模式）
 
-```
-┌─────────────────────────────────────────────┐
-│              定时器工作原理                  │
-├─────────────────────────────────────────────┤
-│                                             │
-│  计数器从 0 开始计数                         │
-│  每个时钟周期增加一个计数值                  │
-│                                             │
-│  计数值 ──────────────────────────────►     │
-│         0  1  2  3  ...  alarm_count        │
-│         │                   │               │
-│         │←── 计数增长 ──────→│               │
-│                             │               │
-│                             ▼               │
-│                      触发报警（Alarm）       │
-│                      执行回调函数            │
-│                                             │
-│  if (auto_reload):                          │
-│      计数器重置为 reload_count              │
-│      继续下一轮计数                          │
-│                                             │
-└─────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A["计数器从 0 开始计数<br/>每个时钟周期增加一个计数值"]
+    A --> B["计数值: 0→1→2→3→...→alarm_count"]
+    B --> C["触发报警（Alarm）<br/>执行回调函数"]
+    C --> D{"auto_reload?"}
+    D -->|"是"| E["计数器重置为 reload_count<br/>继续下一轮计数"]
+    E --> A
 ```
 
 **定时器精度由两个因素决定：**
@@ -132,21 +118,12 @@ gptimer_start(handle);                     // 5. 启动
 
 ### 2.2 ESP32-S3 定时器资源
 
-```
-┌─────────────────────────────────────────────┐
-│          ESP32-S3 定时器类型                 │
-├─────────────────┬───────────────────────────┤
-│ GPTimer (通用)  │ 2 组（TIMER0, TIMER1）    │
-│                 │ 每组有 2 个通道            │
-│                 │ 64-bit 计数器              │
-│                 │ 支持报警和自动重载         │
-├─────────────────┼───────────────────────────┤
-│ FreeRTOS Tick   │ 系统定时器                │
-│                 │ 默认 100Hz (10ms周期)      │
-├─────────────────┼───────────────────────────┤
-│ ESP Timer       │ 高精度微秒级定时          │
-│                 │ esp_timer API             │
-└─────────────────┴───────────────────────────┘
+```mermaid
+flowchart TD
+    A["ESP32-S3 定时器类型"]
+    A --> B["GPTimer（通用）<br/>2 组（TIMER0, TIMER1）<br/>每组有 2 个通道<br/>64-bit 计数器<br/>支持报警和自动重载"]
+    A --> C["FreeRTOS Tick<br/>系统定时器<br/>默认 100Hz（10ms周期）"]
+    A --> D["ESP Timer<br/>高精度微秒级定时<br/>esp_timer API"]
 ```
 
 **定时器类型选择决策：**
@@ -165,39 +142,14 @@ gptimer_start(handle);                     // 5. 启动
 
 ### 3.1 定时器模块结构
 
-```
-┌─────────────────────────────────────────────┐
-│                  app_main()                 │
-│              (main/main.c)                  │
-└───────────────────┬─────────────────────────┘
-                    │
-        ┌───────────┼───────────┐
-        │                       │
-        ▼                       ▼
-┌───────────────┐       ┌───────────────┐
-│  lcd_init()   │       │ gptimer_init()│
-│ (components/  │       │ (components/  │
-│   LCD/lcd.c)  │       │   GPTimer/    │
-│               │       │   gptim.c)    │
-└───────┬───────┘       └───────┬───────┘
-        │                       │
-        ▼                       ▼
-┌───────────────┐       ┌───────────────────────┐
-│  SPI 初始化   │       │ gptimer_new_timer()   │
-│               │       │ gptimer_set_alarm_    │
-│               │       │    action()           │
-│               │       │ gptimer_register_     │
-│               │       │    event_callbacks()  │
-│               │       │ gptimer_enable()      │
-│               │       │ gptimer_start()       │
-└───────────────┘       └───────────────────────┘
-                                │
-                                ▼
-                        ┌───────────────┐
-                        │TimerCallback  │
-                        │   (ISR)       │
-                        │ flag_timer=1  │
-                        └───────────────┘
+```mermaid
+flowchart TD
+    A["app_main()<br/>(main/main.c)"]
+    A --> B["lcd_init()<br/>(components/LCD/lcd.c)"]
+    A --> C["gptimer_init()<br/>(components/GPTimer/gptim.c)"]
+    B --> D["SPI 初始化"]
+    C --> E["gptimer_new_timer()<br/>gptimer_set_alarm_action()<br/>gptimer_register_event_callbacks()<br/>gptimer_enable()<br/>gptimer_start()"]
+    E --> F["TimerCallback<br/>(ISR)<br/>flag_timer=1"]
 ```
 
 ### 3.2 定时器触发流程
@@ -327,26 +279,12 @@ bool IRAM_ATTR TimerCallback(gptimer_handle_t timer,
 
 ESP32-S3 的 Flash 使用 SPI 接口访问，当 CPU 同时操作 Flash（如写数据或擦除）时，如果 ISR 函数存放在 Flash 中，CPU 将无法读取指令——这会导致 Cache 异常。将 ISR 函数标记为 `IRAM_ATTR` 后，链接器会把它放入内部 SRAM，这段内存始终可访问。
 
-```
-┌─────────────────────────────────────────────┐
-│             IRAM_ATTR 属性                   │
-├─────────────────────────────────────────────┤
-│                                             │
-│ 将函数放置在内部 RAM（IRAM）中              │
-│                                             │
-│ 优点：                                      │
-│ - 执行速度更快（比 Flash 快）               │
-│ - 即使 Flash 被禁用也能执行                 │
-│                                             │
-│ 适用场景：                                  │
-│ - 中断服务程序（ISR）                       │
-│ - 高频执行的代码                            │
-│                                             │
-│ 注意：                                      │
-│ - IRAM 空间有限                             │
-│ - ISR 中不能调用 Flash 中的函数             │
-│                                             │
-└─────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A["IRAM_ATTR 属性<br/>将函数放置在内部 RAM（IRAM）中"]
+    A --> B["优点<br/>- 执行速度更快（比 Flash 快）<br/>- 即使 Flash 被禁用也能执行"]
+    A --> C["适用场景<br/>- 中断服务程序（ISR）<br/>- 高频执行的代码"]
+    A --> D["注意<br/>- IRAM 空间有限<br/>- ISR 中不能调用 Flash 中的函数"]
 ```
 
 **返回值 `false` 的含义**：GPTimer 回调可以返回 `true` 来请求唤醒一个高优先级任务。本项目不需要此功能，返回 `false`。
@@ -387,41 +325,16 @@ void app_main(void)
 
 这是嵌入式系统中最基础的 ISR-任务协作模式：ISR 只做标志设置，任务层轮询检查标志并执行实际业务逻辑。
 
+```mermaid
+flowchart TD
+    A["ISR（TimerCallback）<br/>flag_timer = 1<br/>✓ 极短执行时间<br/>✓ 无阻塞调用<br/>✓ 仅设置标志"]
+    A -->|"异步通知"| B["主任务循环<br/>if(flag_timer == 1) {<br/>  timer_cnt++;<br/>  lcd_show_num(...);<br/>  gpio_toggle(...);<br/>  flag_timer = 0;<br/>}<br/>vTaskDelay(10);"]
 ```
-定时器 ISR 与主任务的协作：
-
-┌─────────────────────────────────────────────┐
-│               ISR (TimerCallback)           │
-│                                             │
-│   flag_timer = 1                            │
-│                                             │
-│   ✓ 极短执行时间                            │
-│   ✓ 无阻塞调用                              │
-│   ✓ 仅设置标志                              │
-└───────────────────┬─────────────────────────┘
-                    │
-                    │ (异步通知)
-                    │
-                    ▼
-┌─────────────────────────────────────────────┐
-│               主任务循环                     │
-│                                             │
-│   if(flag_timer == 1) {                     │
-│       // 处理定时事件                        │
-│       timer_cnt++;                          │
-│       lcd_show_num(...);                    │
-│       gpio_toggle(...);                     │
-│       flag_timer = 0;  // 清除标志          │
-│   }                                         │
-│   vTaskDelay(10);  // 让出 CPU              │
-│                                             │
-└─────────────────────────────────────────────┘
 
 优点：
 - ISR 简短高效
 - 复杂处理在任务中完成
 - 避免 ISR 中的阻塞操作
-```
 
 **标志位轮询 vs 队列/信号量通知：**
 
@@ -576,6 +489,7 @@ typedef struct {
 
 ```
 定时周期 = alarm_count / resolution_hz
+```
 
 示例：
 - resolution_hz = 1MHz
@@ -583,15 +497,16 @@ typedef struct {
 - 定时周期 = 500,000 / 1,000,000 = 0.5s = 500ms
 
 常用配置：
-┌────────────────┬────────────────┬─────────────┐
-│ 定时周期       │ alarm_count    │ resolution  │
-├────────────────┼────────────────┼─────────────┤
-│ 1ms            │ 1,000          │ 1MHz        │
-│ 10ms           │ 10,000         │ 1MHz        │
-│ 100ms          │ 100,000        │ 1MHz        │
-│ 500ms          │ 500,000        │ 1MHz        │
-│ 1s             │ 1,000,000      │ 1MHz        │
-└────────────────┴────────────────┴─────────────┘
+
+```mermaid
+flowchart TD
+    subgraph T["常用配置（resolution=1MHz）"]
+        C1["1ms → alarm_count=1,000"]
+        C2["10ms → alarm_count=10,000"]
+        C3["100ms → alarm_count=100,000"]
+        C4["500ms → alarm_count=500,000"]
+        C5["1s → alarm_count=1,000,000"]
+    end
 ```
 
 ### 8.3 进阶方向

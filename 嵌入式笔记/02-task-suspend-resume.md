@@ -108,16 +108,15 @@ app_main()                                  [main/main.c]
   │
   ├── xTaskCreatePinnedToCore(LED_task,...)  创建 LED 任务 → core 0
   └── xTaskCreatePinnedToCore(key_task,...)  创建 key 任务 → core 0
+```
 
-         ┌──────── CPU core 0 ────────┐
-         │                            │
-   LED_task()                    key_task()
-   while(1)                      while(1)
-   ├ gpio_toggle(GPIO38)         ├ key_scan()
-   └ vTaskDelay(100)             │  ├ key1 (GPIO9) → gpio_toggle(GPIO39)
-                                 │  ├ key2 (GPIO10) → vTaskSuspend(LED_task)
-                                 │  └ key3 (GPIO11) → vTaskResume(LED_task)
-                                 └ vTaskDelay(5)
+```mermaid
+flowchart TD
+    subgraph core0["CPU core 0"]
+        direction LR
+        LED["LED_task()<br/>while(1)<br/>gpio_toggle(GPIO38)<br/>vTaskDelay(100)"]
+        KEY["key_task()<br/>while(1)<br/>key_scan()<br/>key1(GPIO9) → gpio_toggle(GPIO39)<br/>key2(GPIO10) → vTaskSuspend(LED_task)<br/>key3(GPIO11) → vTaskResume(LED_task)<br/>vTaskDelay(5)"]
+    end
 ```
 
 ### 3.2 按键与任务状态联动示意
@@ -156,40 +155,20 @@ vTaskSuspend(LED_task_handle);
 
 上一章的任务状态机只有四个态：Ready → Running → Blocked（→ Ready）。本章补上了 Suspended：
 
-```text
-              创建
-                │
-                ▼
-           ┌──────┐              vTaskSuspend()
-           │ Ready│◄────────────────────────────┐
-           └──┬───┘                             │
-              │ 调度选中                          │
-              ▼                                 │
-    ┌──────────────────────┐                    │
-    │       Running        │                    │
-    └──┬────────┬──────────┘                    │
-       │        │                               │
-       │        │ vTaskDelay() / 等信号量        │
-       │        ▼                               │
-       │   ┌─────────┐       vTaskSuspend()     │
-       │   │ Blocked │──────────────────────────┤
-       │   └────┬────┘                          │
-       │        │ 超时/事件到达                   │
-       │        ▼                               │
-       │   ┌──────┐           vTaskResume()     │
-       └──►│ Ready│◄────────────────────────────┘
-           └──┬───┘
-              │  vTaskDelete()
-              ▼
-           ┌──────┐
-           │Deleted│ （不再存在）
-           └──────┘
+```mermaid
+stateDiagram-v2
+    [*] --> Ready : 创建
+    Ready --> Running : 调度选中
+    Running --> Blocked : vTaskDelay() / 等信号量
+    Blocked --> Ready : 超时/事件到达
+    Running --> Suspended : vTaskSuspend()
+    Blocked --> Suspended : vTaskSuspend()
+    Suspended --> Ready : vTaskResume()
+    Ready --> Deleted : vTaskDelete()
 
-                     ┌───────────┐
-                     │ Suspended │
-                     └───────────┘
-                       调 度 器
-                       完 全 忽 略
+    note right of Suspended
+        调度器完全忽略
+    end note
 ```
 
 关键观察：
@@ -469,40 +448,16 @@ vTaskResume()  → 把任务插回 Ready 队列
 
 **状态转换全图（五态完整版）：**
 
-```text
-                    vTaskDelete()
-                  ┌──────────────┐
-                  │              │
-                  ▼              │
-  ┌─────────────────────────────────────────────────────┐
-  │                                                     │
-  │  ┌─────────┐   vTaskSuspend()   ┌───────────┐     │
-  │  │ Running │──────────────────► │ Suspended │     │
-  │  └──┬───┬──┘                    └─────┬─────┘     │
-  │     │   │                             │           │
-  │     │   │ vTaskSuspend()              │           │
-  │     │   │ (从 Blocked)                │vTaskResume()│
-  │     │   │                             │           │
-  │     │   ▼                             │           │
-  │  ┌────────┐                           │           │
-  │  │Blocked │                           │           │
-  │  └───┬────┘                           │           │
-  │      │ 超时/事件到达                    │           │
-  │      │                                │           │
-  │      ▼                                ▼           │
-  │  ┌──────┐     调度选中     ┌──────┐              │
-  │  │Ready │◄────────────── │Ready │◄─────────────┘
-  │  └──┬───┘                └──────┘
-  │     │                       ▲
-  │     │ xTaskCreate()        │
-  │     ▼                      │
-  │  ┌──────┐                ┌──────┐
-  │  │Deleted│               │Deleted│
-  │  └──────┘                └──────┘
-  │     ▲                       ▲
-  │     │ vTaskDelete()        │ vTaskDelete()
-  │     │                      │
-  └─────┴──────────────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> Ready : xTaskCreate()
+    Ready --> Running : 调度选中
+    Running --> Blocked : vTaskDelay() / 等待事件
+    Running --> Suspended : vTaskSuspend()
+    Blocked --> Suspended : vTaskSuspend()
+    Blocked --> Ready : 超时/事件到达
+    Suspended --> Ready : vTaskResume()
+    Ready --> Deleted : vTaskDelete()
 ```
 
 **快速判断口诀：**

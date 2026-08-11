@@ -116,15 +116,27 @@ app_main()                                  [main/main.c]
   │
   ├── xTaskCreatePinnedToCore(LED_task,...)  创建 LED 任务 → core 0
   └── xTaskCreatePinnedToCore(key_task,...)  创建 key 任务 → core 0
+```
 
-         ┌──────── CPU core 0 ────────┐
-         │                            │
-   LED_task()                    key_task()
-   while(1)                      while(1)
-   ├ gpio_toggle(38)             ├ key_scan()
-   └ vTaskDelay(100)             │  ├ key1 → gpio_toggle(39)
-                                 │  └ key2 → vTaskDelete(LED_task)
-                                 └ vTaskDelay(5)
+```mermaid
+flowchart TD
+    subgraph CORE0["CPU core 0"]
+        direction LR
+        subgraph LED["LED_task()"]
+            direction TB
+            L1["gpio_toggle(38)"]
+            L2["vTaskDelay(100)"]
+            L1 --> L2
+        end
+        subgraph KEY["key_task()"]
+            direction TB
+            K1["key_scan()"]
+            K2["key1 → gpio_toggle(39)"]
+            K3["key2 → vTaskDelete(LED_task)"]
+            K4["vTaskDelay(5)"]
+            K1 --> K2 --> K3 --> K4
+        end
+    end
 ```
 
 ### 3.2 双任务并行运行示意
@@ -227,24 +239,14 @@ TaskHandle_t key_task_handle = NULL;
 
 FreeRTOS 的调度器在 `vTaskStartScheduler()` 后启动。在 ESP-IDF 里，调度器其实是在调用 `app_main()` **之前**就已经启动了（详见第 8.4 节）。任务有四种状态：
 
-```text
-        创建
-         │
-         ▼
-      ┌──────┐
-      │ Ready│◄─────────────────┐
-      └──┬───┘                  │
-         │ 被调度选中             │ 超时/事件到达
-         ▼                      │
-      ┌──────┐   vTaskDelay() ┌───────┐
-      │Running│──────────────►│Blocked│
-      └──────┘                └───────┘
-         │                      │
-         │ vTaskSuspend()       │
-         ▼                      │
-      ┌────────┐                │
-      │Suspended│───────────────┘
-      └────────┘  vTaskResume()
+```mermaid
+stateDiagram-v2
+    [*] --> Ready: 创建
+    Ready --> Running: 被调度选中
+    Running --> Blocked: vTaskDelay()
+    Blocked --> Ready: 超时/事件到达
+    Running --> Suspended: vTaskSuspend()
+    Suspended --> Ready: vTaskResume()
 ```
 
 本工程里：
@@ -566,17 +568,11 @@ main 任务里调用 app_main()
 
 Flash 布局大致如下：
 
-```text
-0x0000  ┌─────────────────────┐
-        │  bootloader.bin     │
-0x8000  ├─────────────────────┤
-        │  partition-table    │
-        ├─────────────────────┤
-        │  app 分区 (factory)  │
-        │    app.bin          │
-        ├─────────────────────┤
-        │  nvs / spiffs / ... │
-        └─────────────────────┘
+```mermaid
+flowchart TD
+    A["0x0000: bootloader.bin"] --> B["0x8000: partition-table"]
+    B --> C["app 分区 (factory)<br/>app.bin"]
+    C --> D["nvs / spiffs / ..."]
 ```
 
 bootloader 的设计意义：

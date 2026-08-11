@@ -103,20 +103,22 @@ SPI（Serial Peripheral Interface）是一种**全双工、同步、主从架构
 
 #### 总览图：四线 SPI 拓扑
 
-```
-  主机（ESP32-S3）                    从机（LCD 驱动芯片）
- ┌─────────────────┐                ┌──────────────────┐
- │                 │    SCLK ──────►│                  │
- │  SPI Master     │    MOSI ──────►│  SPI Slave       │
- │  (SPI2_HOST)    │    MISO ──────│◄────（LCD 不接） │
- │                 │    CS   ──────►│                  │
- └─────────────────┘                └──────────────────┘
+```mermaid
+flowchart LR
+    subgraph MASTER["主机（ESP32-S3）"]
+        M["SPI Master<br/>(SPI2_HOST)"]
+    end
+    subgraph SLAVE["从机（LCD 驱动芯片）"]
+        S["SPI Slave<br/>(LCD 不接 MISO)"]
+    end
+    MASTER -- "SCLK ──►" --> SLAVE
+    MASTER -- "MOSI ──►" --> SLAVE
+    MASTER -- "CS   ──►" --> SLAVE
+    SLAVE -. "MISO ◄── (LCD 不接)" .-> MASTER
 
- + 额外控制线（非 SPI 标准，LCD 专用）:
-   主机                         从机
-  GPIO47 ─────── DC  ─────────► 区分命令/数据
-  GPIO21 ─────── RST ─────────► 硬件复位
-  GPIO40 ─────── BLK ─────────► 背光使能
+    DC["GPIO47 ── DC  ──► 区分命令/数据"]
+    RST["GPIO21 ── RST ──► 硬件复位"]
+    BLK["GPIO40 ── BLK ──► 背光使能"]
 ```
 
 #### 信号线说明
@@ -133,15 +135,20 @@ SPI（Serial Peripheral Interface）是一种**全双工、同步、主从架构
 
 #### 局部图：MOSI 上的数据流
 
-```
-  MOSI 数据线 (GPIO11):
-
-  位顺序: MSB ──────────────► LSB
-         ┌──┬──┬──┬──┬──┬──┬──┬──┐
-         │D7│D6│D5│D4│D3│D2│D1│D0│
-         └──┴──┴──┴──┴──┴──┴──┴──┘
-  主机在 SCLK 边沿送出每个 bit，从机在相反的边沿锁存。
-  一次事务可发送任意字节数（由 t.length 控制 bit 总数）。
+```mermaid
+flowchart LR
+    subgraph BIT["MOSI 数据线 (GPIO11) MSB → LSB"]
+        direction LR
+        D7["D7"]
+        D6["D6"]
+        D5["D5"]
+        D4["D4"]
+        D3["D3"]
+        D2["D2"]
+        D1["D1"]
+        D0["D0"]
+    end
+    D7 --> D6 --> D5 --> D4 --> D3 --> D2 --> D1 --> D0
 ```
 
 **CS 信号的作用：** 主机拉低 CS → 开始与选中的从机通信 → 发送数据 → 拉高 CS 释放总线。多个 SPI 从机挂在同一组 SCLK/MOSI/MISO 上，依靠各自的 CS 线区分。
@@ -189,26 +196,15 @@ SPI 没有固定的帧格式——没有起始位、停止位、校验位。**�
 
 #### 状态图：一次完整 SPI 事务
 
-```
-     ┌──────────┐
-     │ CS = HIGH│  ← 总线空闲，从机忽略 SCLK/MOSI
-     └────┬─────┘
-          │ 主机拉低 CS
-          ▼
-     ┌──────────┐
-     │ CS = LOW │  ← 从机被激活，准备接收
-     └────┬─────┘
-          │ 主机产生 SCLK + 逐字节发送
-          ▼
-     ┌──────────┐
-     │ 传输 N   │  ← t.length 比特的数据在 MOSI 上传完
-     │ 字节数据 │
-     └────┬─────┘
-          │ 主机拉高 CS
-          ▼
-     ┌──────────┐
-     │ CS = HIGH│  ← 从机锁存已收数据，释放总线
-     └──────────┘
+```mermaid
+flowchart TD
+    IDLE["CS = HIGH<br/>总线空闲，从机忽略 SCLK/MOSI"]
+    ACTIVE["CS = LOW<br/>从机被激活，准备接收"]
+    TRANSFER["传输 N 字节数据<br/>t.length 比特的数据<br/>在 MOSI 上传完"]
+    DONE["CS = HIGH<br/>从机锁存已收数据<br/>释放总线"]
+    IDLE -->|"主机拉低 CS"| ACTIVE
+    ACTIVE -->|"主机产生 SCLK<br/>逐字节发送"| TRANSFER
+    TRANSFER -->|"主机拉高 CS"| DONE
 ```
 
 **关键认识：** SPI 的"帧"由 CS 的下降沿和上升沿界定。一次 CS↓→CS↑ 就是一帧。帧内可以发送任意字节数——1 字节的命令、2 字节的坐标、11520 字节的像素数据，都由 `t.length` 和 `t.tx_buffer` 控制。
@@ -226,71 +222,32 @@ ESP32-S3 内部集成了 **4 个 SPI 外设**：
 
 #### 总览图：ESP32-S3 SPI 驱动分层
 
-```
-  ┌──────────────────────────────────────┐
-  │        应用程序 (app_main)            │
-  │  lcd_init() → lcd_show_picture()     │
-  └──────────────────┬───────────────────┘
-                     │
-  ┌──────────────────▼───────────────────┐
-  │        LCD 封装层 (lcd.c)            │
-  │  lcd_write_cmd / lcd_write_data16    │
-  │  lcd_set_window / lcd_clear          │
-  │  ┌─ DC/RST/BLK GPIO 直接控制        │
-  │  └─ 寄存器序列 / 像素格式转换       │
-  └──────────────────┬───────────────────┘
-                     │
-  ┌──────────────────▼───────────────────┐
-  │        SPI 封装层 (spi.c)            │
-  │  spi2_init() / spi2_write_data()    │
-  └──────────────────┬───────────────────┘
-                     │
-  ┌──────────────────▼───────────────────┐
-  │   ESP-IDF SPI Master Driver         │
-  │  spi_bus_initialize                 │
-  │  spi_bus_add_device                 │
-  │  spi_device_polling_transmit        │
-  │  ┌─ GPIO 交换矩阵自动分配 IO        │
-  │  ├─ DMA 引擎自动搬运大数据          │
-  │  └─ 事务队列 (queue_size=7)         │
-  └──────────────────┬───────────────────┘
-                     │
-  ┌──────────────────▼───────────────────┐
-  │  ESP32-S3 SPI2 硬件控制器             │
-  │  移位寄存器 + 时钟发生器 + CS 控制   │
-  │  ───────────────┬─────────────────── │
-  │  GPIO11(MOSI)   GPIO12(SCLK)         │
-  │  GPIO13(MISO)   GPIO48(CS)           │
-  └──────────────────┴───────────────────┘
+```mermaid
+flowchart TD
+    APP["应用程序 (app_main)<br/>lcd_init() → lcd_show_picture()"]
+    LCD["LCD 封装层 (lcd.c)<br/>lcd_write_cmd / lcd_write_data16<br/>lcd_set_window / lcd_clear<br/>DC/RST/BLK GPIO 直接控制<br/>寄存器序列 / 像素格式转换"]
+    SPI["SPI 封装层 (spi.c)<br/>spi2_init() / spi2_write_data()"]
+    IDF["ESP-IDF SPI Master Driver<br/>spi_bus_initialize<br/>spi_bus_add_device<br/>spi_device_polling_transmit<br/>GPIO 交换矩阵自动分配 IO<br/>DMA 引擎自动搬运大数据<br/>事务队列 (queue_size=7)"]
+    HW["ESP32-S3 SPI2 硬件控制器<br/>移位寄存器 + 时钟发生器 + CS 控制<br/>GPIO11(MOSI) GPIO12(SCLK)<br/>GPIO13(MISO) GPIO48(CS)"]
+    APP --> LCD --> SPI --> IDF --> HW
 ```
 
 #### 局部图：事务描述符与 DMA 协作
 
-```
-  应用程序调用:
-  spi2_write_data(buf, len)
-        │
-        ▼
-  填充 spi_transaction_t:
-  ┌──────────────────────┐
-  │ .tx_buffer = buf     │  ← 指向数据源
-  │ .length    = len * 8 │  ← 总比特数
-  │ .rx_buffer = NULL    │  ← 不读回
-  └──────────────────────┘
-        │
-        ▼
-  spi_device_polling_transmit(spi2_handle, &t)
-        │
-        ▼
-  ESP-IDF 驱动自动决策:
-  ┌─ len ≤ 64B  → CPU 填充 FIFO（无 DMA）
-  └─ len > 64B  → DMA 引擎自动搬运
-        │
-        ▼
-  DMA 描述符链:
-  ┌─ desc[0]: 指向 buf[0..4095]
-  ├─ desc[1]: 指向 buf[4096..8191]
-  └─ ...      分段描述，无需 CPU 干预
+```mermaid
+flowchart TD
+    CALL["应用程序调用:<br/>spi2_write_data(buf, len)"]
+    TRANS["填充 spi_transaction_t:<br/>.tx_buffer = buf<br/>.length = len * 8<br/>.rx_buffer = NULL"]
+    POLL["spi_device_polling_transmit<br/>(spi2_handle, &t)"]
+    DECIDE{"len ≤ 64B?"}
+    FIFO["CPU 填充 FIFO (无 DMA)"]
+    DMA["DMA 引擎自动搬运"]
+    DESC["DMA 描述符链:<br/>desc[0]: buf[0..4095]<br/>desc[1]: buf[4096..8191]<br/>... 分段描述，无需 CPU 干预"]
+    CALL --> TRANS
+    TRANS --> POLL
+    POLL --> DECIDE
+    DECIDE -->|YES| FIFO
+    DECIDE -->|NO| DMA --> DESC
 ```
 
 ### 1.5 SPI 与 I2C 的对比
@@ -334,29 +291,29 @@ SPI LCD 使用一种**双通道协议**——同一根 MOSI 线上，通过 DC �
 
 #### 状态图：命令与数据的交替
 
-```
-  lcd_write_cmd(0x2A):
-  ┌─ CS=0 ─► DC=0 ─► 发送 0x2A ─► CS=1 ─┐   ← 告诉 LCD: 我要设 X 坐标
-  └────────────────────────────────────┘
-
-  lcd_write_data16(0x0064):               ← LCD 知道: 这是 X 坐标的参数
-  ┌─ CS=0 ─► DC=1 ─► 发送 0x00,0x64 ─► CS=1 ─┐
-  └────────────────────────────────----──┘
-
-  一次完整的窗口设置 = 命令 + 参数:
-  ┌──────┐ ┌────────────────┐
-  │DC=0  │ │DC=1            │
-  │0x2A  │ │xstar(2B) xend(2B)│  ← Column Address Set
-  └──────┘ └────────────────┘
-  ┌──────┐ ┌────────────────┐
-  │DC=0  │ │DC=1            │
-  │0x2B  │ │ystar(2B) yend(2B)│  ← Row Address Set
-  └──────┘ └────────────────┘
-  ┌──────┐
-  │DC=0  │
-  │0x2C  │                          ← Memory Write（无参数）
-  └──────┘
-  ┌──── DC=1, 连续发送像素数据 ────┐  ← 像素流
+```mermaid
+flowchart TD
+    subgraph CMD["写命令"]
+        CMD1["lcd_write_cmd(0x2A):<br/>CS=0 → DC=0 → 发送 0x2A → CS=1<br/>告诉 LCD: 我要设 X 坐标"]
+    end
+    subgraph DATA["写数据"]
+        D1["lcd_write_data16(0x0064):<br/>CS=0 → DC=1 → 发送 0x00,0x64 → CS=1<br/>LCD 知道: 这是 X 坐标的参数"]
+    end
+    subgraph WINDOW["一次完整的窗口设置 = 命令 + 参数"]
+        direction TB
+        W1["DC=0, 0x2A<br/>(Column Address Set)"]
+        W1A["DC=1, xstar(2B) xend(2B)"]
+        W2["DC=0, 0x2B<br/>(Row Address Set)"]
+        W2A["DC=1, ystar(2B) yend(2B)"]
+        W3["DC=0, 0x2C<br/>(Memory Write, 无参数)"]
+        W4["DC=1, 连续发送像素数据<br/>(像素流)"]
+        W1 --> W1A
+        W1A --> W2
+        W2 --> W2A
+        W2A --> W3
+        W3 --> W4
+    end
+    CMD --> DATA --> WINDOW
 ```
 
 ### 2.3 初始化序列详解
@@ -789,28 +746,15 @@ void app_main(void)
 
 ### 5.2 图片帧发送时序
 
-```
-  一次 lcd_show_picture(gImage_image) 的开销分析:
-
-  ┌─ 软件拷贝 ───────────────────────────┐
-  │  for(j=0; j<57600; j++)             │
-  │    lcd_buf[2j]=img[2i];             │  约 2ms @240MHz
-  │    lcd_buf[2j+1]=img[2i+1];         │
-  └──────────────────────────────────────┘
-  
-  ┌─ 第 1 次 DMA ────────────────────────┐
-  │  lcd_write_datan(buf, 11520)        │
-  │  → spi2_write_data → t.length=92160 │
-  │  → DMA 搬运 11520B → SPI2 移位寄存器│
-  │  耗时: 11520×8 / 60MHz ≈ 1.54 ms    │
-  └──────────────────────────────────────┘
-  ... 重复 10 次 ...
-  ┌─ 第 10 次 DMA ───────────────────────┐
-  │  同上                                │
-  └──────────────────────────────────────┘
-  
-  总耗时: ~2ms (拷贝) + 10×1.54ms (DMA) ≈ 17.4 ms
-  帧率:   1000/17.4 ≈ 57 FPS（理论最大值）
+```mermaid
+flowchart TD
+    COPY["软件拷贝<br/>for(j=0; j&lt;57600; j++)<br/>lcd_buf[2j]=img[2i]<br/>lcd_buf[2j+1]=img[2i+1]<br/>约 2ms @240MHz"]
+    DMA1["第 1 次 DMA<br/>lcd_write_datan(buf, 11520)<br/>→ spi2_write_data → t.length=92160<br/>→ DMA 搬运 11520B → SPI2 移位寄存器<br/>耗时: 11520×8 / 60MHz ≈ 1.54 ms"]
+    DMA10["第 10 次 DMA<br/>同上"]
+    RESULT["总耗时: ~2ms + 10×1.54ms ≈ 17.4 ms<br/>帧率: 1000/17.4 ≈ 57 FPS (理论最大值)"]
+    COPY --> DMA1
+    DMA1 -. "重复 9 次 ..." .-> DMA10
+    DMA10 --> RESULT
 ```
 
 > 实际帧率会低于 57FPS，因为还需要考虑 CS 切换、DMA 描述符准备、中断延时的开销。如需更高帧率，可以改用双缓冲 + 中断通知机制。

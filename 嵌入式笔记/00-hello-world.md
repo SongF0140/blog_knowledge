@@ -174,40 +174,15 @@ idf_component_register(SRCS "hello_world_main.c"
 
 ### 4.1 ESP32-S3 启动流程
 
-```
-┌─────────────────┐
-│   电源上电/复位   │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  ROM Bootloader │  ◄── 第一级启动加载器（固化在 ROM）
-│   (检查启动模式)  │     芯片出厂时烧录，不可修改
-└────────┬────────┘     功能：根据 GPIO 电平判断启动模式
-         │              （正常启动 / 下载模式）
-         ▼
-┌─────────────────┐
-│  Second Stage   │  ◄── ESP-IDF 提供的第二级 bootloader
-│   Bootloader    │     从 Flash 0x0000 处加载
-└────────┬────────┘     功能：初始化 Flash、PSRAM、加载分区表
-         │              选择运行哪个 App 分区（支持 OTA 回滚）
-         ▼
-┌─────────────────┐
-│   加载 App      │  ◄── 从 Flash 加载应用程序镜像到 RAM
-│   到 RAM/Flash  │     ESP32-S3 支持 XIP（片内执行），
-└────────┬────────┘     代码可直接在 Flash 上运行，无需全量加载到 RAM
-         │
-         ▼
-┌─────────────────┐
-│  FreeRTOS 初始化 │  ◄── 创建 IDLE 任务、定时器任务
-│  启动调度器      │     初始化 esp_timer、事件循环等系统组件
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   app_main()    │  ◄── 用户程序入口点
-│   开始执行       │     在 main 任务上下文中运行
-└─────────────────┘
+```mermaid
+flowchart TD
+    A["电源上电/复位"]
+    B["ROM Bootloader<br/>(检查启动模式)<br/><br/>第一级启动加载器（固化在 ROM）<br/>芯片出厂时烧录，不可修改<br/>功能：根据 GPIO 电平判断启动模式<br/>（正常启动 / 下载模式）"]
+    C["Second Stage Bootloader<br/><br/>ESP-IDF 提供的第二级 bootloader<br/>从 Flash 0x0000 处加载<br/>功能：初始化 Flash、PSRAM、加载分区表<br/>选择运行哪个 App 分区（支持 OTA 回滚）"]
+    D["加载 App 到 RAM/Flash<br/><br/>从 Flash 加载应用程序镜像到 RAM<br/>ESP32-S3 支持 XIP（片内执行）<br/>代码可直接在 Flash 上运行，无需全量加载到 RAM"]
+    E["FreeRTOS 初始化<br/>启动调度器<br/><br/>创建 IDLE 任务、定时器任务<br/>初始化 esp_timer、事件循环等系统组件"]
+    F["app_main() 开始执行<br/><br/>用户程序入口点<br/>在 main 任务上下文中运行"]
+    A --> B --> C --> D --> E --> F
 ```
 
 **两级 Bootloader 的设计原因**：ROM Bootloader 是固化在芯片中的，代码量极少（几 KB），只能做最基本的启动模式判断。复杂的逻辑（Flash 初始化、分区表解析、固件校验、OTA 回滚）需要更大的代码空间——这就是 Second Stage Bootloader 存在的意义。它在 Flash 中独立存放，可以通过 ESP-IDF 升级。
@@ -216,25 +191,13 @@ idf_component_register(SRCS "hello_world_main.c"
 
 ### 4.2 FreeRTOS 任务调度
 
-```
-app_main() 执行完毕后
-         │
-         ▼
-┌─────────────────────┐
-│ FreeRTOS 调度器启动  │
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│  创建默认任务        │  ◄── main 任务自动转换为 FreeRTOS 任务
-│  (IDF 默认配置)      │     优先级为 1（configMAIN_TASK_PRIORITY）
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│  任务调度循环        │  ◄── 按优先级抢占调度 + 同优先级时间片轮转
-│  (Preemptive + RR)  │     调度器在每次 SysTick 中断时评估是否需要切换
-└─────────────────────┘
+```mermaid
+flowchart TD
+    A["app_main() 执行完毕后"]
+    B["FreeRTOS 调度器启动"]
+    C["创建默认任务<br/>(IDF 默认配置)<br/><br/>main 任务自动转换为 FreeRTOS 任务<br/>优先级为 1（configMAIN_TASK_PRIORITY）"]
+    D["任务调度循环<br/>(Preemptive + RR)<br/><br/>按优先级抢占调度 + 同优先级时间片轮转<br/>调度器在每次 SysTick 中断时评估是否需要切换"]
+    A --> B --> C --> D
 ```
 
 **`app_main()` 执行完毕 ≠ 程序结束**。在裸机程序中 `main()` return 意味着程序结束（通常会触发复位）。但在 ESP-IDF 中，`app_main()` 返回后，main 任务被删除，但 FreeRTOS 调度器继续运行——IDLE 任务、Wi-Fi 任务、Timer 任务依然在工作。如果你在 `app_main()` 中创建了其他任务，它们会继续执行。这就是 RTOS 和裸机最本质的区别之一：**程序不会"结束"，调度器永远在运转**。
@@ -348,23 +311,14 @@ build/
 
 ## 7. Flash 分区布局
 
-```
-┌────────────────────────────────────┐ 0x000000
-│        Bootloader Partition        │
-│         (默认 0x0000 ~ 0x8000)      │  32 KB
-├────────────────────────────────────┤ 0x8000
-│        Partition Table             │
-│         (分区表配置)                │  通常 4 KB
-├────────────────────────────────────┤ 0x10000
-│        NVS Partition               │
-│         (非易失性存储)              │  存放 Wi-Fi 配置、校准数据等
-├────────────────────────────────────┤
-│        OTA Data Partition          │
-│         (OTA 升级状态)              │  记录当前激活的 App 分区
-├────────────────────────────────────┤
-│        Application Partition       │
-│         (用户应用程序)              │  factory / ota_0 / ota_1
-└────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A["Bootloader Partition<br/>(默认 0x0000 ~ 0x8000)<br/>32 KB"]
+    B["Partition Table<br/>(分区表配置)<br/>通常 4 KB<br/>起始地址 0x8000"]
+    C["NVS Partition<br/>(非易失性存储)<br/>存放 Wi-Fi 配置、校准数据等<br/>起始地址 0x10000"]
+    D["OTA Data Partition<br/>(OTA 升级状态)<br/>记录当前激活的 App 分区"]
+    E["Application Partition<br/>(用户应用程序)<br/>factory / ota_0 / ota_1"]
+    A --> B --> C --> D --> E
 ```
 
 **分区表的作用**：ESP32-S3 没有独立的 ROM 来存放"哪个地址是 App 代码"。分区表就是一个存储在已知地址（0x8000）的元数据表，告诉 Bootloader 每个分区的类型、起始地址和大小。这比固定地址方案灵活得多——你可以自定义分区大小、添加 OTA 分区、设置 NVS 容量，而不需要改 Bootloader 代码。

@@ -198,15 +198,29 @@ draft: false
 
 **连线方式（5 线 UART）：**
 
-```
-  发送方                          接收方
-  ┌──────┐                      ┌──────┐
-  │  TX  ├─────────────────────→│  RX  │  数据发送
-  │  RX  │←─────────────────────┤  TX  │  数据接收
-  │ CTS  │←─────────────────────┤ RTS  │  流控输入
-  │ RTS  ├─────────────────────→│ CTS  │  流控输出
-  │ GND  ├─────────────────────→│ GND  │  共地
-  └──────┘                      └──────┘
+```mermaid
+flowchart LR
+    subgraph SEND["发送方"]
+        direction TB
+        TX_S["TX"]
+        RX_S["RX"]
+        CTS_S["CTS"]
+        RTS_S["RTS"]
+        GND_S["GND"]
+    end
+    subgraph RECV["接收方"]
+        direction TB
+        RX_R["RX"]
+        TX_R["TX"]
+        RTS_R["RTS"]
+        CTS_R["CTS"]
+        GND_R["GND"]
+    end
+    TX_S -->|"数据发送"| RX_R
+    TX_R -->|"数据接收"| RX_S
+    RTS_R -->|"流控输入"| CTS_S
+    RTS_S -->|"流控输出"| CTS_R
+    GND_S -->|"共地"| GND_R
 ```
 
 > **注意**：RTS/CTS 是交叉连接的——己方 RTS 接对方 CTS，己方 CTS 接对方 RTS。

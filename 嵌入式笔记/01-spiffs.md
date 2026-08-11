@@ -98,24 +98,31 @@ SPIFFS（SPI Flash File System）是一种专为 SPI NOR Flash
 
 SPIFFS 的内部结构：
 
-```
+
 SPIFFS 分区布局：
 
-┌────────────────────────────────────────────┐
-│  逻辑块 0   │ 逻辑块 1   │ ... │ 逻辑块 N-1   │
-│ (4KB)      │ (4KB)     │     │ (4KB)       │
-└────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph BLOCKS["SPIFFS 分区：逻辑块（最小擦除单元 = 4KB）"]
+        direction LR
+        B0["逻辑块 0<br/>(4KB)"] --- B1["逻辑块 1<br/>(4KB)"] --- B2["..."] --- BN["逻辑块 N-1<br/>(4KB)"]
+    end
+```
 
 每个逻辑块内部：
-┌─────────────────────────────────────────────┐
-│  页 0 (256B) │ 页 1 │ ... │ 页 15 │
-└─────────────────────────────────────────────┘
+
+```mermaid
+flowchart LR
+    subgraph PAGES["每个逻辑块：逻辑页（最小分配单元 = 256B）"]
+        direction LR
+        P0["页 0<br/>(256B)"] --- P1["页 1"] --- P2["..."] --- P15["页 15"]
+    end
+```
 
 特点：
 - 最小分配单元：逻辑页（256 字节）
 - 最小擦除单元：逻辑块（4KB）
 - 文件索引存储在 Flash 内部，不需要额外 RAM
-```
 
 SPIFFS 的"逻辑块-逻辑页"两级管理是它实现磨损均衡的基础。每次写入新文件时，SPIFFS 不会覆盖旧数据所在的物理页，而是把新数据写到空闲页，然后更新索引指向新页——这就是为什么它说"掉电安全"：旧数据在新数据完全写入之前不会被破坏。
 
@@ -213,29 +220,14 @@ app_main()                                    [main/main.c]
 
 ### 4.2 文件操作调用链
 
-```
-app_main()
-  │
-  └── fopen("/spiffs/test.txt", "w")
-        │
-        ▼
-      VFS 层（Virtual File System）
-        │  ┌───────────────────────────────────────┐
-        │  │ 根据路径前缀 /spiffs 匹配已注册的        │
-        │  │ SPIFFS VFS 驱动                       │
-        │  └───────────────────────────────────────┘
-        │
-        ▼
-      SPIFFS 库（spiffs）
-        │  逻辑页分配 → 逻辑块管理 → 磨损均衡
-        │
-        ▼
-      SPI Flash 驱动（spi_flash）
-        │  Flash 读取 / 擦除 / 写入
-        │
-        ▼
-      ESP32-S3 内置 SPI NOR Flash
-        │  物理介质
+```mermaid
+flowchart TD
+    A["app_main()"] --> B["fopen('/spiffs/test.txt', 'w')"]
+    B --> C["VFS 层<br/>（Virtual File System）"]
+    C --> D["根据路径前缀 /spiffs<br/>匹配已注册的 SPIFFS VFS 驱动"]
+    D --> E["SPIFFS 库<br/>逻辑页分配 → 逻辑块管理 → 磨损均衡"]
+    E --> F["SPI Flash 驱动<br/>Flash 读取 / 擦除 / 写入"]
+    F --> G["ESP32-S3 内置 SPI NOR Flash<br/>物理介质"]
 ```
 
 ---
@@ -401,30 +393,14 @@ void app_main(void)
 
 `format_if_mount_failed = true` 的含义：
 
-```
-esp_vfs_spiffs_register() 的内部逻辑：
-
-     挂载 SPIFFS 分区
-          │
-          ▼
-     ┌─────────────┐
-     │  挂载成功？  │──── 是 ──→ 返回 ESP_OK
-     └──────┬──────┘
-            │ 否
-            ▼
-     ┌────────────────────┐
-     │ format_if_mount_   │
-     │ failed == true ？  │──── 否 ──→ 返回 ESP_FAIL
-     └──────┬─────────────┘
-            │ 是
-            ▼
-     ┌─────────────────┐
-     │ 格式化 SPIFFS 分区│
-     │ 然后重新挂载     │
-     └────────┬────────┘
-              │
-              ▼
-         返回 ESP_OK
+```mermaid
+flowchart TD
+    A["挂载 SPIFFS 分区"] --> B{"挂载成功？"}
+    B -->|"是"| C["返回 ESP_OK"]
+    B -->|"否"| D{"format_if_mount_failed == true？"}
+    D -->|"否"| E["返回 ESP_FAIL"]
+    D -->|"是"| F["格式化 SPIFFS 分区<br/>然后重新挂载"]
+    F --> G["返回 ESP_OK"]
 ```
 
 **适用场景：**
@@ -438,40 +414,18 @@ esp_vfs_spiffs_register() 的内部逻辑：
 
 ### 6.1 架构对比
 
-```
-SPIFFS 方案（本章 19_SPIFFS）：
-┌──────────────┐     ┌──────────┐     ┌──────────────┐
-│   app_main   │────→│   VFS    │────→│   SPIFFS     │
-│ fopen/fgets  │     │ /spiffs  │     │   库          │
-└──────────────┘     └──────────┘     └──────┬───────┘
-                                             │
-                                    ┌────────▼───────┐
-                                    │  spi_flash 驱动 │
-                                    └────────┬───────┘
-                                             │
-                                    ┌────────▼───────┐
-                                    │ 内置 SPI NOR    │
-                                    │ Flash (16MB)    │
-                                    └────────────────┘
-
-SD 卡方案（第 17 章 17_SPITF）：
-┌──────────────┐     ┌──────────┐     ┌──────────────┐
-│   app_main   │────→│   VFS    │────→│   FatFs      │
-│ fopen/fgets  │     │ /sdcard  │     │   库          │
-└──────────────┘     └──────────┘     └──────┬───────┘
-                                             │
-                                    ┌────────▼───────┐
-                                    │  sdmmc 协议层   │
-                                    └────────┬───────┘
-                                             │
-                                    ┌────────▼───────┐
-                                    │  SPI 主机驱动   │
-                                    └────────┬───────┘
-                                             │
-                                    ┌────────▼───────┐
-                                    │  外置 SD 卡     │
-                                    │ (GPIO 2/35/36/37)│
-                                    └────────────────┘
+```mermaid
+flowchart TD
+    subgraph SPIFFS["SPIFFS 方案（本章）"]
+        direction TB
+        AM1["app_main<br/>fopen/fgets"] --> VFS1["VFS<br/>/spiffs"] --> SP["SPIFFS 库"]
+        SP --> SFD["spi_flash 驱动"] --> FL["内置 SPI NOR Flash<br/>(16MB)"]
+    end
+    subgraph SD["SD 卡方案（第 17 章）"]
+        direction TB
+        AM2["app_main<br/>fopen/fgets"] --> VFS2["VFS<br/>/sdcard"] --> FAT["FatFs 库"]
+        FAT --> SDMMC["sdmmc 协议层"] --> SPI["SPI 主机驱动"] --> SDCARD["外置 SD 卡<br/>(GPIO 2/35/36/37)"]
+    end
 ```
 
 ### 6.2 使用场景对比
@@ -516,16 +470,11 @@ SD 卡方案（第 17 章 17_SPITF）：
 
 第 17 章介绍了 **SD 卡 + FAT**，本章介绍了 **SPIFFS + Flash**。两条技术路线共用一个上层接口：
 
-```
-         ┌── fopen / fprintf / fgets / fclose ──┐
-         │                  VFS                  │
-         ├──────────────┬────────────────────────┤
-         │  /sdcard     │     /spiffs            │
-         │  FatFs       │     SPIFFS             │
-         │  sdmmc       │     spi_flash          │
-         │  SPI 总线    │     (内部总线)          │
-         │  外置 SD 卡  │     内置 Flash          │
-         └──────────────┴────────────────────────┘
+```mermaid
+flowchart TD
+    FOPEN["fopen / fprintf / fgets / fclose"] --> VFS["VFS（Virtual File System）"]
+    VFS --> SD["/sdcard<br/>FatFs → sdmmc → SPI 总线<br/>→ 外置 SD 卡"]
+    VFS --> SPIF["/spiffs<br/>SPIFFS → spi_flash → (内部总线)<br/>→ 内置 Flash"]
 ```
 
 选择哪种方案取决于项目是否需要外置存储介质、容量需求和数据导出的便利性。
