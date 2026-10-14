@@ -1,0 +1,5 @@
+# Obsidian 本地配置（工作区状态、插件设置等，仅本机有效）
+.obsidian/
+
+# GitCode 平台配置（已迁移至 GitHub，不再使用）
+.gitcode/
