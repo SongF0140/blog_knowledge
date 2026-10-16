@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 480" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <rect width="680" height="480" fill="#FFFFFF"/>
+
+  <!-- 标题 -->
+  <text x="340" y="36" text-anchor="middle" font-size="16" font-weight="700" fill="#1F2937">能被重新生成的，和还不能的</text>
+  <text x="340" y="58" text-anchor="middle" font-size="12" fill="#6B7280">左边跟着「把代码再做一遍」一起变便宜。右边不会。</text>
+
+  <!-- 左栏：能被重新生成的 -->
+  <rect x="40" y="84" width="280" height="330" rx="10" fill="#F9FAFB" stroke="#D1D5DB" stroke-width="1.5"/>
+  <text x="180" y="120" text-anchor="middle" font-size="14" font-weight="700" fill="#374151">能被重新生成的</text>
+  <text x="180" y="142" text-anchor="middle" font-size="11" fill="#9CA3AF">说得清，就能再做一版</text>
+
+  <rect x="62" y="164" width="236" height="44" rx="7" fill="#FFFFFF" stroke="#E5E7EB"/>
+  <text x="180" y="191" text-anchor="middle" font-size="13" fill="#374151">代码和算法</text>
+
+  <rect x="62" y="222" width="236" height="44" rx="7" fill="#FFFFFF" stroke="#E5E7EB"/>
+  <text x="180" y="249" text-anchor="middle" font-size="13" fill="#374151">功能和界面</text>
+
+  <rect x="62" y="280" width="236" height="44" rx="7" fill="#FFFFFF" stroke="#E5E7EB"/>
+  <text x="180" y="307" text-anchor="middle" font-size="13" fill="#374151">提示词和模板</text>
+
+  <text x="180" y="368" text-anchor="middle" font-size="11" fill="#9CA3AF">说清了需求，agent 一晚上</text>
+  <text x="180" y="386" text-anchor="middle" font-size="11" fill="#9CA3AF">就能再做一版</text>
+
+  <!-- 右栏：还不能 -->
+  <rect x="360" y="84" width="280" height="330" rx="10" fill="#FFF7ED" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="500" y="120" text-anchor="middle" font-size="14" font-weight="700" fill="#92400E">还不能</text>
+  <text x="500" y="142" text-anchor="middle" font-size="11" fill="#B45309">换了会话，就长不回来</text>
+
+  <rect x="382" y="160" width="236" height="50" rx="7" fill="#FFFFFF" stroke="#FDE68A"/>
+  <text x="500" y="180" text-anchor="middle" font-size="13" fill="#374151">决策，和决策的原因</text>
+  <text x="500" y="199" text-anchor="middle" font-size="10.5" fill="#9CA3AF">为什么选 MySQL 不选 MongoDB</text>
+
+  <rect x="382" y="222" width="236" height="50" rx="7" fill="#FFFFFF" stroke="#FDE68A"/>
+  <text x="500" y="242" text-anchor="middle" font-size="13" fill="#374151">被推翻的方案，和理由</text>
+  <text x="500" y="261" text-anchor="middle" font-size="10.5" fill="#9CA3AF">不然同一个坑踩两遍</text>
+
+  <rect x="382" y="284" width="236" height="50" rx="7" fill="#FFFFFF" stroke="#FDE68A"/>
+  <text x="500" y="304" text-anchor="middle" font-size="13" fill="#374151">被纠正过的偏好</text>
+  <text x="500" y="323" text-anchor="middle" font-size="10.5" fill="#9CA3AF">不记下来，新会话再犯</text>
+
+  <rect x="382" y="346" width="236" height="50" rx="7" fill="#FFFFFF" stroke="#FDE68A"/>
+  <text x="500" y="366" text-anchor="middle" font-size="13" fill="#374151">踩坑的现场记录</text>
+  <text x="500" y="385" text-anchor="middle" font-size="10.5" fill="#9CA3AF">报错原文、环境、解法</text>
+
+  <!-- 底部结论 -->
+  <text x="340" y="448" text-anchor="middle" font-size="13" font-weight="600" fill="#1F2937">代码只是决策链的输出。链本身，才是资产。</text>
+</svg>
