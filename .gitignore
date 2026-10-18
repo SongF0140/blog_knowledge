@@ -3,3 +3,28 @@
 
 # GitCode 平台配置（已迁移至 GitHub，不再使用）
 .gitcode/
+
+# Local verification output; article images remain versioned
+/artifacts/
+/screenshots/
+/.playwright-mcp/
+/playwright-report/
+/test-results/
+/tmp/
+/temp/
+*.tmp
+*.temp
+*.log
+*.swp
+*.swo
+*~
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+
+# Local credentials and environment files; retain example templates
+.env
+.env.*
+!.env.example
+!.env.*.example

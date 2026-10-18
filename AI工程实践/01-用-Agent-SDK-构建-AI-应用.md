@@ -6,10 +6,13 @@ category: AI工程
 tags: ["Agent SDK", "Multi-Agent", "Tool Use"]
 draft: false
 ---
+
+> **示例版本说明**：本文对照 [CodeBuddy 官方示例仓库](https://cnb.cool/codebuddy/agent-sdk-demos) 提交 `25953e3` 核对。下文代码为结构摘录，省略了部分导入、类型和实现；博客仓库不包含这些示例目录。`unstable_v2_*` 属于不稳定接口，运行时请锁定依赖并对照当前文档。
+
 # 用 CodeBuddy Agent SDK 构建 AI 应用：从七个示例看懂一个生态
 
 > **关键词**：Agent SDK · 多轮对话 · 多智能体 · Tool Use · MCP · Hooks
-> **配套代码**：本仓库 `quick-start` / `chat-demo` / `multi-turn-session` / `profile-builder` / `research-assistant` / `spreadsheet-assistant` / `mail-assistant`
+> **配套代码**：[CodeBuddy 官方示例仓库](https://cnb.cool/codebuddy/agent-sdk-demos)，其中包含 `quick-start` / `chat-demo` / `multi-turn-session` / `profile-builder` / `research-assistant` / `spreadsheet-assistant` / `mail-assistant`
 > **日期**：2026-09-04
 
 ---
@@ -18,7 +21,7 @@ draft: false
 
 - Agent SDK 把「模型 + 工具 + 记忆 + 子智能体」打包成一个可直接调用的运行时，**一行 `query()` 就能跑起一个会自己上网、写文件、执行命令的智能体**。
 - 同一套 SDK 提供两种语言入口：TypeScript（`@tencent-ai/agent-sdk`）与 Python（`codebuddy-agent-sdk`），心智模型一致：**查询（query）→ 会话（session）→ 编排（agents/hooks）**。
-- 本仓库的 7 个示例正好串起一条能力进化线：**单次问答 → 多轮对话 → 会话恢复 → 工具与钩子 → 多智能体编排 → 全栈聊天应用 → AI 自举的邮件助理**。
+- 该示例仓库的 7 个示例正好串起一条能力进化线：**单次问答 → 多轮对话 → 会话恢复 → 工具与钩子 → 多智能体编排 → 全栈聊天应用 → AI 自举的邮件助理**。
 - 如果你想快速上手：**做实验用 `quick-start`，做产品用 `chat-demo`，玩多智能体用 `research-assistant`，看天花板用 `mail-assistant`**。
 
 ---
@@ -37,12 +40,13 @@ Prompt 工程 → 函数调用 Schema → 工具注册 → 循环调度
 ```ts
 // quick-start/quick-start.ts（摘录）
 import { query } from '@tencent-ai/agent-sdk';
+import * as path from 'node:path';
 
 const q = query({
   prompt: '你好！请用简洁的方式告诉我你擅长做什么事情。',
   options: {
     maxTurns: 100,
-    cwd: path.join(__dirname, 'agent'),
+    cwd: path.join(process.cwd(), 'agent'),
     allowedTools: ['Task', 'Bash', 'Glob', 'Grep', 'Read', 'Write', 'Edit',
                    'WebFetch', 'WebSearch', 'TodoWrite', 'KillBash'],
     debug: true,
@@ -59,7 +63,7 @@ for await (const message of q) {
 }
 ```
 
-`query()` 返回一个**异步流**：`assistant`（模型讲话）、`tool_use`（模型要调工具）、`result`（本轮结束、带计费与耗时）会依次涌出，你只需要决定「展示什么」。
+`query()` 返回异步消息流。在这些示例中，`assistant` 消息的 `message.content` 可以包含 `text` 和 `tool_use` 内容块，`result` 表示本轮结束；应用再把内容块转成自己的 WebSocket 事件。不能把 `tool_use` 内容块当成固定的顶层消息类型或固定先后顺序。
 
 Python 侧完全镜像：
 
@@ -74,7 +78,7 @@ async with CodeBuddySDKClient(options=options) as client:
             process_assistant_message(msg, tracker, transcript)
 ```
 
-> 值得注意：所有示例的模型配置注释都写着「不指定模型，使用默认配置」——SDK 会继承 CodeBuddy 的默认模型配置，让示例开箱即用，不必先为选模型纠结。
+> 值得注意：本文摘录省略了部分模型配置，便于聚焦调用结构；官方示例实际上有显式 `model` 设置。运行时需按当前 SDK、账号权限和认证配置选择可用模型，不能假设所有示例都会自动继承同一个默认模型。
 
 ---
 
@@ -87,7 +91,7 @@ async with CodeBuddySDKClient(options=options) as client:
 | 3 | `profile-builder` | TS | 让智能体「搜索→写文件→产出 .docx」 | `systemPrompt` + `Skill` 工具、自定义脚本目录约定 |
 | 4 | `research-assistant` | Python | 一个只负责「分活」的研究主管 | `AgentDefinition` 子智能体、`hooks`、文件系统共享黑板 |
 | 5 | `chat-demo` | TS | 可对话的全栈聊天应用 | Express + WebSocket + `query()` 流广播 + React |
-| 6 | `spreadsheet-assistant` | Python | 会操作 Excel 的智能体 | `xlsx` 技能（openpyxl/pandas + LibreOffice 重算公式） |
+| 6 | `spreadsheet-assistant` | TypeScript / Electron，含 Python 脚本 | 桌面表格助手 | Electron 集成、`xlsx` 技能及 Python 表格处理脚本 |
 | 7 | `mail-assistant` | TS（Bun） | AI 能自己造插件的邮件助理 | Actions / Listeners 热重载、MCP 邮箱工具、IMAP 实时监听 |
 
 把它们排成一条线，就是 Agent 应用从玩具到生产力的**四个里程碑**：
@@ -111,7 +115,7 @@ async with CodeBuddySDKClient(options=options) as client:
 
 ### 2. Session（会话）：跨轮次的记忆载体
 
-`query()` 每次是独立的；要“记住上下文”，用 Session：
+示例中不传恢复参数的 `query()` 调用不会自动把业务聊天历史带入下一轮。可以使用 Session API；也可按 SDK 的 `resume` 配置恢复既有会话：
 
 ```ts
 // multi-turn-session/examples.ts（摘录）
@@ -124,11 +128,11 @@ await session.send('再往后推10年是哪一年？只回答数字。'); // 它
 for await (const msg of session.stream()) { /* …第二轮… */ }
 ```
 
-会话可以「挂起再恢复」：`createSession` 返回的流里有一条 `system/init` 消息携带 `session_id`，之后用 `unstable_v2_resumeSession(sessionId)` 就能带着全部记忆复活——这是做「上次聊到一半」类产品的基础（详见本系列第 4 篇）。
+会话可以「挂起再恢复」：`createSession` 返回的流里有一条 `system/init` 消息携带 `session_id`，之后用 `unstable_v2_resumeSession(sessionId)` 可在会话记录仍可用的前提下继续对话；这不保证历史永不丢失、永不压缩——这是做「上次聊到一半」类产品的基础（详见本系列第 4 篇）。
 
 ### 3. Tools（工具）：智能体的双手
 
-`allowedTools` 白名单化地开放能力：
+`allowedTools` 参与工具权限配置；它不是操作系统沙箱，也不能据此推断未列出的所有工具必然不可用。严格限制应结合拒绝规则、权限回调和执行环境。常见工具包括：
 
 - **通用工具**：`Bash`、`Read`、`Write`、`Edit`、`Glob`、`Grep`、`WebSearch`、`WebFetch`…
 - **编排工具**：`Task`（唤起子智能体）、`Skill`（加载领域技能）
@@ -137,15 +141,22 @@ for await (const msg of session.stream()) { /* …第二轮… */ }
 ### 4. Hooks（钩子）：在工具调用前后插一道安全门
 
 ```ts
-// quick-start/quick-start.ts（摘录）
-hooks: {
+// 根据 quick-start 示例改写：补上路径规范化与目录边界检查。
+import * as path from 'node:path';
+
+const customScriptsPath = path.resolve(process.cwd(), 'agent/custom_scripts');
+const hooks = {
   PreToolUse: [{
     matcher: 'Write|Edit|MultiEdit',
     hooks: [
       async (input: any) => {
-        const filePath = input.tool_input.file_path ?? '';
+        const filePath = path.resolve(input.tool_input.file_path ?? '');
+        const relative = path.relative(customScriptsPath, filePath);
+        const outside = relative === '..'
+          || relative.startsWith('..' + path.sep)
+          || path.isAbsolute(relative);
         if (['.js', '.ts'].includes(path.extname(filePath).toLowerCase())
-            && !filePath.startsWith(customScriptsPath)) {
+            && outside) {
           return {
             decision: 'block',               // ← 拦截
             stopReason: '脚本必须写入 custom_scripts 目录',
@@ -156,15 +167,15 @@ hooks: {
       },
     ],
   }],
-},
+}; // 通过 query({ prompt, options: { hooks } }) 使用
 ```
 
-钩子返回值用 `{ continue: true }` 放行、`{ decision: 'block', ... }` 拦截。上例把「模型写代码」约束进沙箱目录，**这是 Agent 上生产的第一个护栏**。
+上游示例直接使用 `startsWith`，会误判同名前缀目录，也没有规范化 `..`。上面改用绝对路径和 `path.relative` 检查词法边界，但仍不是操作系统沙箱：符号链接、实际工具工作目录以及 Bash 等其他写入通道都要另行控制。`continue: true` 只是继续执行权限流程，不代表绕过其余检查。
 
 ### 5. Agents + Skills（子智能体与技能）：把复杂度拆出去
 
 - **Skill（技能）**：一段领域知识与脚本的打包（如 spreadsheet-assistant 的 `xlsx` 技能，内含 openpyxl/pandas 用法与 `recalc.py` 公式重算工具）；
-- **Agent（子智能体）**：一个带独立 prompt、独立工具集、独立模型的“分身”，通过 `Task` 工具按需唤醒，配合 hooks 全程可观测（见第 2 篇）。
+- **Agent（子智能体）**：一个带独立 prompt、独立工具集、独立模型的“分身”，通过 `Task` 工具按需唤醒，配合 hooks 记录工具调用（见第 3 篇）。
 
 ---
 
@@ -182,7 +193,7 @@ npx tsx quick-start.ts
 npx tsx profile-builder.ts "张三"
 
 # research-assistant：交互式研究，产出带图表的 PDF
-uv run python research_agent/agent.py '量子计算最新进展'
+uv run python research_agent/agent.py  # 启动后在 REPL 输入研究问题
 ```
 
 这种形态把 `query()` 的返回值直接 `console.log`，几行代码就是一个小工具。
@@ -202,10 +213,10 @@ WebSocket Server ──► ChatSession（一个聊天 = 一个会话）
    │              SDK Agent 运行时
    │  ③ 广播 assistant_message / tool_use / result
    ▼
-浏览器实时渲染「思考过程 + 最终回答」
+浏览器实时渲染「公开文本、工具事件与执行结果」
 ```
 
-这里的关键设计是**订阅-广播**：一个 `ChatSession` 持有多个订阅者，把 SDK 流拆成 `user_message / assistant_message / tool_use / result / error` 五类事件推给前端——工具调用过程也能实时看到，而不是干等最后结果（详见第 3 篇）。
+这里的关键设计是**订阅-广播**：一个 `ChatSession` 持有多个订阅者，把 SDK 流拆成 `user_message / assistant_message / tool_use / result / error` 五类事件推给前端——工具调用过程也能实时看到，而不是干等最后结果（详见第 2 篇）。
 
 ---
 
@@ -214,8 +225,8 @@ WebSocket Server ──► ChatSession（一个聊天 = 一个会话）
 最后一个示例值得单独讲，因为它把 Agent 的边界推到了「**让 AI 自己扩展自己**」：
 
 1. 智能体（模型）运行在 `agent/` 工作区，能读懂 `CODEBUDDY.md` 里声明的**子智能体**（如 `inbox-searcher`，自带“假设驱动迭代搜索”方法论）与**技能**（`skills/action-creator`、`listener-creator`，为它提供「造插件」的模板）；
-2. 当模型被允许写代码时，`PreToolUse` 钩子强制它把生成的 `.ts` 脚本写进 `agent/custom_scripts/`——这个目录同时被服务端的 **Actions/Listeners Manager** 用文件 watcher 热加载；
-3. 于是：用户说「把超过 30 天的促销邮件归档」→ 模型调用 `action-creator` 技能现场写一个 action 脚本 → 文件落盘 → 下一秒服务端已能执行它，并且**下次邮件进来，写好的 listener 会自动触发**。
+2. 当模型被允许写代码时，示例用 `PreToolUse` 钩子检查通过 Write/Edit/MultiEdit 写入的 `.ts` 路径，约定保存到 `agent/custom_scripts/`——这个目录同时被服务端的 **Actions/Listeners Manager** 用文件 watcher 热加载；
+3. 于是：用户说「把超过 30 天的促销邮件归档」→ 模型调用 `action-creator` 技能现场写一个 action 脚本 → 文件落盘后由 watcher 尝试加载。Action 需要被调用才执行；只有另外创建并启用符合接口的 Listener，才会在匹配事件到来时触发，不能把两种扩展混为一谈。
 
 ```text
 用户一句话 ──► 模型写代码 ──► custom_scripts/ 落盘
@@ -226,7 +237,7 @@ WebSocket Server ──► ChatSession（一个聊天 = 一个会话）
               IMAP IDLE 收新邮件 ──► 自动处理 ──► SQLite / FTS5 检索
 ```
 
-配套的还有 SQLite 邮件库（含 FTS5 全文索引）、WebSocket 双通道（REST 收邮件、WS 推聊天与 UI 状态）、React + Tailwind 前端。**它不是「邮件 + 一个聊天框」，而是「一个会持续值守、并且能自己学会新任务的员工」**。
+配套的还有 SQLite 邮件库（含 FTS5 全文索引）、HTTP/REST 与 WebSocket 两类通信（邮件同步通过 IMAP，WS 推聊天与 UI 状态）、React + Tailwind 前端。**它不是「邮件 + 一个聊天框」，而是「一个会持续值守、并且能自己学会新任务的员工」**。
 
 ---
 
@@ -250,5 +261,9 @@ WebSocket Server ──► ChatSession（一个聊天 = 一个会话）
 > **把「智能体的运行与治理」做成基础设施，让开发者专注于「业务、体验与边界」。**
 
 - 心智负担被压缩：prompt 之外，你只需要声明工具白名单、钩子护栏、子智能体分工；
-- 可观测性被内置：每一次 `tool_use`、每一个 `result` 都出现在流里，天然可追踪、可审计、可计费；
+- 可观测性被内置：消息流可以用来记录工具调用与结果；完整审计还需要持久化、关联 ID、错误处理和日志脱敏；
 - 扩展性被打开：MCP 工具、Skill、自定义 Actions/Listeners，AI 的能力池可以持续生长。
+
+## 核对资料
+
+- [SDK 权限规则](https://www.codebuddy.ai/docs/cli/permissions)

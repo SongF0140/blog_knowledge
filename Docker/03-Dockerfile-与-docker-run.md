@@ -1,18 +1,30 @@
 ---
 title: "Dockerfile 与 docker run"
 published: 2026-09-04
-description: "先搞清楚镜像、容器、仓库四个概念，再看如何用 Dockerfile 描述构建过程、用 docker run 启动容器。"
+description: "先搞清楚镜像、容器、仓库三个概念，再看如何用 Dockerfile 描述构建过程、用 docker run 启动容器。"
 category: Docker
 tags: ["Dockerfile", "docker run", "镜像"]
 draft: false
 ---
+## 一、镜像、容器与仓库
+
+- **镜像**：包含文件系统层和运行配置的只读模板。
+- **容器**：镜像的运行实例，拥有自己的可写层与进程生命周期。
+- **仓库**：保存和分发镜像的服务。
+
+## 一、镜像、容器与仓库
+
+- **镜像**：包含文件系统层和运行配置的只读模板。
+- **容器**：镜像的运行实例，拥有自己的可写层与进程生命周期。
+- **仓库**：保存和分发镜像的服务。
+
 ## 二、Dockerfile 指令速查
 
 ### 2.1 基础指令
 
 | 指令 | 作用 | 示例 |
 |------|------|------|
-| `FROM` | 指定基础镜像，**必须是第一条指令** | `FROM ubuntu:22.04` |
+| `FROM` | 开始构建阶段；前面可以有全局 `ARG`、注释和解析器指令 | `FROM ubuntu:22.04` |
 | `MAINTAINER` | 声明作者（已过时，推荐用 `LABEL`） | `MAINTAINER CloudStudio author` |
 | `LABEL` | 以键值对形式写元数据 | `LABEL env=production` |
 | `WORKDIR` | 设置后续指令的工作目录（不存在会自动创建） | `WORKDIR /app` |
@@ -22,7 +34,7 @@ draft: false
 `ARG` 与 `ENV` 的区别要记住：
 
 ```
-ARG  → 只在 docker build 期间存在，镜像构建完就消失了
+ARG  → 构建参数，不自动成为容器环境变量；值仍可能出现在构建历史或证明信息里，不能用于传递密钥
 ENV  → 构建期和运行期都在，会持久化到容器里
 ```
 
@@ -34,9 +46,12 @@ ENV  → 构建期和运行期都在，会持久化到容器里
 | `ADD` | 额外支持 URL 下载、tar 自动解压 | 只有需要这两个特性时才用 |
 
 ```dockerfile
-COPY site/ /var/www/html/                                    # 本地目录
-ADD https://ftp.xxx/jenkins/war/2.397/jenkins.war /data/app  # 远程下载
-ADD project.tar.gz /install/                                 # 自动解压
+# 本地目录
+COPY site/ /var/www/html/
+# 远程下载
+ADD https://ftp.xxx/jenkins/war/2.397/jenkins.war /data/app
+# 自动解压
+ADD project.tar.gz /install/
 ```
 
 ### 2.3 执行指令：最容易混淆的三个
@@ -45,18 +60,21 @@ ADD project.tar.gz /install/                                 # 自动解压
 |------|----------|-----------|----------|
 | `RUN` | `docker build` 时 | 不适用 | 装软件、建目录、编译 |
 | `CMD` | `docker run` 时 | ✅ 可覆盖 | 容器默认启动命令 |
-| `ENTRYPOINT` | `docker run` 时 | ❌ 不可覆盖 | 固定入口，CMD 作为参数 |
+| `ENTRYPOINT` | `docker run` 时 | 可用 `--entrypoint` 覆盖 | 固定默认入口，exec 形式可搭配 CMD 提供默认参数 |
 
 ```dockerfile
-RUN apt-get install -y nginx              # 构建时装软件
-CMD ["nginx", "-g", "daemon off;"]        # 启动时跑服务
+# 构建时装软件
+RUN apt-get install -y nginx
+# 启动时跑服务
+CMD ["nginx", "-g", "daemon off;"]
 ```
 
 覆盖示例：
 
 ```bash
 docker run myimage nginx -g "daemon off;"   # 覆盖 CMD
-docker run myimage -v                       # 有 ENTRYPOINT 时，这里传的是参数
+docker run myimage -v                       # exec ENTRYPOINT 下替换 CMD 参数
+docker run --entrypoint sh myimage          # 覆盖 ENTRYPOINT
 ```
 
 > **推荐 `CMD` 用 exec 形式（JSON 数组）**：`CMD ["nginx","-g","daemon off;"]`。
@@ -70,7 +88,7 @@ docker run myimage -v                       # 有 ENTRYPOINT 时，这里传的�
 | `EXPOSE` | **声明**容器监听端口 | `EXPOSE 80` |
 | `VOLUME` | 声明数据卷 | `VOLUME ["/data"]` |
 
-`EXPOSE` 只是**声明/文档**，不会真的开放端口。真正让外部访问的是运行时的 `-p`：
+`EXPOSE` 只是**声明/文档**，不会真的开放端口。发布到宿主机端口通常用运行时的 `-p`；同网容器通信无需先发布端口：
 
 ```bash
 docker run -p 8080:80 myimage    # 宿主机8080 → 容器80
@@ -81,7 +99,7 @@ docker run -p 8080:80 myimage    # 宿主机8080 → 容器80
 ## 三、从 Dockerfile 到容器的四个阶段
 
 ```bash
-# 1. 创建文件（文件名必须是 Dockerfile，首字母大写）
+# 1. 默认读取名为 Dockerfile 的文件；其他文件名可通过 -f 指定
 vim Dockerfile
 
 # 2. 编写指令（见下文实战）
@@ -90,7 +108,7 @@ vim Dockerfile
 docker build -t mywebserver:1.0 .
 
 # 4. 运行容器
-docker run -d -p 80:80 mywebserver:1.0
+docker run -d --name myweb -p 80:80 mywebserver:1.0
 ```
 
 **关于构建上下文**：`docker build` 末尾的 `.` 不是"Dockerfile 所在目录"这么简单，而是**要把哪些文件打包发送给 Docker 守护进程**。所以：
@@ -140,11 +158,14 @@ RUN apt-get update \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
-COPY nginx.conf /etc/nginx/nginx.conf    # 放入自定义配置
-COPY site/ /var/www/html/                # 放入站点内容
+# 放入自定义配置
+COPY nginx.conf /etc/nginx/nginx.conf
+# 放入站点内容
+COPY site/ /var/www/html/
 
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]       # daemon off = 前台运行
+# daemon off = 前台运行
+CMD ["nginx", "-g", "daemon off;"]
 ```
 
 配套的 `nginx.conf`（最小可用）：
@@ -184,9 +205,12 @@ http {
 容器的生命周期 = 主进程的生命周期。Apache/nginx 默认以守护进程方式启动，主进程 fork 完就退出，容器随之 Exited。
 
 ```dockerfile
-CMD ["apache2ctl","-D","FOREGROUND"]   # ✅ 前台
-CMD ["nginx","-g","daemon off;"]       # ✅ 前台
-CMD ["service","nginx","start"]        # ❌ 后台，容器立刻退出
+# ✅ 前台
+CMD ["apache2ctl","-D","FOREGROUND"]
+# ✅ 前台
+CMD ["nginx","-g","daemon off;"]
+# ❌ 后台，容器立刻退出
+CMD ["service","nginx","start"]
 ```
 
 **坑 2：`COPY` 的源文件不在构建上下文里**
@@ -202,7 +226,7 @@ ERROR: "/nginx.conf": not found
 
 ```bash
 docker run -d -p 80:80 tag_name     # ❌ tag_name 是文档占位符
-docker run -d -p 80:80 mywebserver:1.0   # ✅ 换成真实镜像名
+docker run -d --name myweb -p 80:80 mywebserver:1.0   # ✅ 换成真实镜像名
 ```
 
 报错特征（本地没有 + 远程也没有）：
@@ -225,7 +249,7 @@ docker exec -it myweb bash     # 进容器内部排查
 
 ## 五、写出好 Dockerfile 的六个习惯
 
-1. **用官方基础镜像**，优先 alpine 版本（体积小）。
+1. **按兼容性和维护状态选基础镜像**。Alpine 通常更小，但使用 musl，部分原生依赖可能需要改用 Debian/Ubuntu slim 镜像。
 2. **合并 `RUN`**，并在同一层内清理缓存：
    ```dockerfile
    RUN apt-get update && apt-get install -y nginx && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -298,7 +322,7 @@ IMAGE_NAME=${IMAGE_NAME:-mywebserver}
 IMAGE_TAG=${IMAGE_TAG:-1.0}
 CONTAINER_NAME=${CONTAINER_NAME:-myweb}
 HOST_PORT=${HOST_PORT:-80}            # 宿主机端口
-CONTAINER_PORT=${CONTAINER_PORT:-80}  # 容器端口，需与 EXPOSE 一致
+CONTAINER_PORT=${CONTAINER_PORT:-80}  # 容器内应用实际监听的端口；EXPOSE 不会强制设置它
 
 # 同名容器已存在则先移除，避免名称/端口冲突
 if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}\$"; then
@@ -359,3 +383,6 @@ Dockerfile 语法本身不多，真正决定水平的是这几个判断：
 - `COPY` 是构建时快照，改代码就要重新构建；
 - 报错先看 `docker logs`，再看 `docker ps -a` 的状态。
 
+## 核对资料
+
+- [Dockerfile 语法及 ENTRYPOINT 覆盖](https://docs.docker.com/reference/dockerfile/)
