@@ -87,7 +87,8 @@ classDiagram
         +~Widget()
         +on_btnCalc_clicked()
     }
-    class "Ui::Widget" {
+    class UiWidget["Ui::Widget"]
+    class UiWidget {
         +QLabel* img_lab
         +QLineEdit* editRadius
         +QLabel* lab_res
@@ -95,13 +96,15 @@ classDiagram
         +QPushButton* btnExit
         +setupUi(QWidget*)
     }
-    class "QPushButton btnCalc" {
+    class CalcButton["QPushButton btnCalc"]
+    class CalcButton {
         +clicked()
     }
-    Widget *-- "ui" "Ui::Widget" : 持有描述对象
-    "Ui::Widget" ..> "QPushButton btnCalc" : 生成并连接
-    Widget ..> "QPushButton btnCalc" : 对象树 parent=this
-    "QPushButton btnCalc" --> "on_btnCalc_clicked()" : 自动连接 clicked()
+    class CalcSlot["Widget::on_btnCalc_clicked()"]
+    Widget *-- UiWidget : ui（持有描述对象）
+    UiWidget ..> CalcButton : 生成并连接
+    Widget ..> CalcButton : 对象树 parent=this
+    CalcButton --> CalcSlot : 自动连接 clicked()
 ```
 
 > 💡 Tips：图里最关键的两条关系——`Widget *-- ui` 表示 `Widget` 用指针持有"界面描述对象"（析构时 `delete ui`）；`btnCalc --> on_btnCalc_clicked()` 表示信号到槽的自动连接。注意 `Ui::Widget` 里的 `btnCalc` 指针与对象树里真正挂在 `Widget` 下的 `btnCalc` 控件是**同一个对象**，`setupUi` 把它既登记进对象树，又存进 `Ui` 类供你访问。

@@ -96,7 +96,7 @@ flowchart TD
     C["connect 注册的连接表<br/>所有按钮 -> KeyPad::lcd_show"]
     D["lcd_show() 槽内"]
     E["sender() 取回按钮<br/>qobject_cast&lt;QPushButton*&gt;"]
-    F["btn->property(\"num\").toInt()<br/>得到语义编号"]
+    F["btn->property(#quot;num#quot;).toInt()<br/>得到语义编号"]
     G{"num 值判断"}
     H["num==10 删除<br/>lcd/=10 ; cnt--"]
     I["num==11 确定<br/>lcd=0 ; random_keypad()"]

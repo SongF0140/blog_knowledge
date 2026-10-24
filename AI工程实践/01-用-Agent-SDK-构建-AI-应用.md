@@ -17,12 +17,12 @@ draft: false
 
 ---
 
-## 太长不看（TL;DR）
+## 先看要点
 
 - Agent SDK 把「模型 + 工具 + 记忆 + 子智能体」打包成一个可直接调用的运行时，**一行 `query()` 就能跑起一个会自己上网、写文件、执行命令的智能体**。
 - 同一套 SDK 提供两种语言入口：TypeScript（`@tencent-ai/agent-sdk`）与 Python（`codebuddy-agent-sdk`），心智模型一致：**查询（query）→ 会话（session）→ 编排（agents/hooks）**。
 - 该示例仓库的 7 个示例正好串起一条能力进化线：**单次问答 → 多轮对话 → 会话恢复 → 工具与钩子 → 多智能体编排 → 全栈聊天应用 → AI 自举的邮件助理**。
-- 如果你想快速上手：**做实验用 `quick-start`，做产品用 `chat-demo`，玩多智能体用 `research-assistant`，看天花板用 `mail-assistant`**。
+- 选示例时可以按用途来：`quick-start` 用来熟悉调用，`chat-demo` 用来研究聊天应用，`research-assistant` 展示多智能体分工，`mail-assistant` 则适合看较完整的应用架构。
 
 ---
 
@@ -220,7 +220,7 @@ WebSocket Server ──► ChatSession（一个聊天 = 一个会话）
 
 ---
 
-## 五、天花板：mail-assistant 的「AI 自举」
+## 五、mail-assistant：运行时生成脚本
 
 最后一个示例值得单独讲，因为它把 Agent 的边界推到了「**让 AI 自己扩展自己**」：
 
@@ -241,9 +241,9 @@ WebSocket Server ──► ChatSession（一个聊天 = 一个会话）
 
 ---
 
-## 六、怎么选：给四种角色的建议
+## 六、按需求选择示例
 
-| 你想做什么 | 从哪个示例起步 | 原因 |
+| 需求 | 从哪个示例起步 | 原因 |
 |-----------|--------------|------|
 | 只是想试试 SDK | `quick-start` | 代码最少，几分钟跑通第一个智能体 |
 | 理解多轮/记忆机制 | `multi-turn-session` | 四个独立小例子逐层演示 send/stream/resume |
@@ -260,9 +260,9 @@ WebSocket Server ──► ChatSession（一个聊天 = 一个会话）
 
 > **把「智能体的运行与治理」做成基础设施，让开发者专注于「业务、体验与边界」。**
 
-- 心智负担被压缩：prompt 之外，你只需要声明工具白名单、钩子护栏、子智能体分工；
+- SDK 接管了部分运行循环；工具权限、钩子、角色分工和业务错误处理仍需要应用自己设计；
 - 可观测性被内置：消息流可以用来记录工具调用与结果；完整审计还需要持久化、关联 ID、错误处理和日志脱敏；
-- 扩展性被打开：MCP 工具、Skill、自定义 Actions/Listeners，AI 的能力池可以持续生长。
+- 需要扩展时，可以接入 MCP 工具、Skill 或自定义 Actions/Listeners。
 
 ## 核对资料
 

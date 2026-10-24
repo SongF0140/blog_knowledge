@@ -141,10 +141,10 @@ flowchart TD
     end
     A --> C
     B --> C
+```
 
 CPU 0 (PRO_CPU): 默认运行 WiFi/BT 协议栈
 CPU 1 (APP_CPU): 默认运行用户应用程序
-```
 
 **两个核心的真实区别：**
 
@@ -215,9 +215,9 @@ flowchart LR
         direction LR
         KA["扫描<br/>1tick"] --> KD1["延时<br/>5tick"] --> KB["扫描<br/>1tick"] --> KD2["延时<br/>5tick"]
     end
+```
 
 两个任务交替运行在 CPU0 上
-```
 
 **时间片分析：**
 - LED 任务每次激活约 1 tick（执行 `gpio_toggle()`），然后阻塞 100 tick
@@ -368,10 +368,11 @@ flowchart LR
     A["Task A<br/>运行"] -->|"vTaskDelay<br/>(主动让出)"| B["Task B<br/>运行"]
     B -->|"vTaskDelay<br/>(主动让出)"| C["Task A<br/>运行"]
     C -->|"vTaskDelay<br/>(主动让出)"| D["..."]
-
-注意：FreeRTOS 使用协作式调度
-任务必须主动调用延时/等待函数让出 CPU
 ```
+
+这里展示的是任务调用延时函数后进入阻塞态、让出 CPU 的过程。FreeRTOS 也支持抢占式调度，是否开启由 `configUSE_PREEMPTION` 决定，不能把这张图理解成调度器只支持协作式调度。
+
+参考：[FreeRTOS 任务调度](https://github.freertos.org/Documentation/02-Kernel/02-Kernel-features/01-Tasks-and-co-routines/04-Task-scheduling)。
 
 **FreeRTOS 是"伪抢占式"？**
 
@@ -435,9 +436,9 @@ flowchart TD
     subgraph KEY["key_task (每5tick扫描一次)"]
         K0["tick 0: 扫描"] --> K1["延时 5tick"] --> K2["tick 5: 扫描"] --> K3["延时 5tick"] --> K4["..."]
     end
+```
 
 调度器根据 vTaskDelay 时间切换任务
-```
 
 **时序的关键洞察：** 在单任务架构中，LED 闪烁的 100 tick 延时意味着按键在这段时间内**完全不被检测**。而在多任务架构中，LED 任务在延时期间让出 CPU，按键任务立刻接替运行——按键每 5 tick 检测一次，响应速度提高了 20 倍。这就是多任务的**实际业务收益**。
 

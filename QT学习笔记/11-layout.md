@@ -116,12 +116,16 @@ classDiagram
     MainHLayout *-- ButtonPanel : addWidget stretch1
     MainHLayout *-- Edit : addWidget stretch2
     ButtonPanel *-- VLayout
-    VLayout *-- "3x QPushButton"
+    class Buttons["3x QPushButton"]
+    VLayout *-- Buttons
     Widget *-- SplitterH : show4 顶层
-    SplitterH *-- "功能区 GroupBox"
+    class FunctionGroup["功能区 GroupBox"]
+    SplitterH *-- FunctionGroup
     SplitterH *-- SplitterV
-    SplitterV *-- "输入区 GroupBox"
-    SplitterV *-- "输出区 GroupBox"
+    class InputGroup["输入区 GroupBox"]
+    SplitterV *-- InputGroup
+    class OutputGroup["输出区 GroupBox"]
+    SplitterV *-- OutputGroup
 ```
 
 图中 `*`--` 表示"拥有/包含"的布局归属关系。`show1` 是"水平布局里嵌套一个带垂直布局的面板 + 一个编辑框"；`show4` 是"水平 `QSplitter` 里再嵌套一个垂直 `QSplitter`"，形成可拖拽的田字/三区结构。

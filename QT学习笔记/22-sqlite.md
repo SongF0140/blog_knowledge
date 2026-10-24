@@ -80,15 +80,15 @@ Qt SQL 的层次可以拆成四层：
 
 ```mermaid
 flowchart TD
-    A["QSqlDatabase::addDatabase(\"QSQLITE\")<br/>注册一个 SQLite 连接<br/>（多线程需指定 connectionName）"]
-    B["db.setDatabaseName(\"demo.db\")<br/>文件路径；:memory: 为内存库"]
+    A["QSqlDatabase::addDatabase(#quot;QSQLITE#quot;)<br/>注册一个 SQLite 连接<br/>（多线程需指定 connectionName）"]
+    B["db.setDatabaseName(#quot;demo.db#quot;)<br/>文件路径；:memory: 为内存库"]
     C["db.open()<br/>打开连接，返回 bool"]
     D{"open 成功?"}
     L["db.lastError().text()<br/>打印错误，排查驱动/路径/权限"]
     E["QSqlQuery query(db)<br/>创建查询并绑定到该连接"]
-    F["query.exec(\"CREATE TABLE IF NOT EXISTS ...\")<br/>建表 / DDL"]
-    G["query.prepare(\"INSERT INTO t VALUES(?,?)\")<br/>+ bindValue + exec 增/改/删"]
-    H["query.exec(\"SELECT ...\")<br/>查询"]
+    F["query.exec(#quot;CREATE TABLE IF NOT EXISTS ...#quot;)<br/>建表 / DDL"]
+    G["query.prepare(#quot;INSERT INTO t VALUES(?,?)#quot;)<br/>+ bindValue + exec 增/改/删"]
+    H["query.exec(#quot;SELECT ...#quot;)<br/>查询"]
     I["while(query.next())<br/>逐行读取 value(col)"]
     J["db.transaction() / commit()<br/>批量写，提升性能"]
     K["db.close()<br/>析构时自动关闭，释放文件锁"]

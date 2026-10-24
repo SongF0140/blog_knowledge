@@ -361,8 +361,10 @@ flowchart LR
     B --> D
     C --> D
     D --> E
+```
 
-    关键转换：
+```text
+关键转换：
       内网 IP:端口 → NAT 映射表 → 公网 IP:新端口
     
       ESP32 发往 baidu.com:80 →
