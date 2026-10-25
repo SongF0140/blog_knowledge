@@ -30,6 +30,14 @@
 - [嵌入式知识地图](./嵌入式笔记/00-knowledge-map.md)
 - [Qt 知识地图](./QT学习笔记/00-qt-knowledge-map.md)
 
+## 博客自动发布
+
+本仓库已通过 GitHub 的 push Webhook 连接到 Vercel 项目 `firefly`。推送后，Vercel 会重新构建网站仓库 [SongF0140/Dusty](https://github.com/SongF0140/Dusty) 的 `master` 分支；构建脚本再拉取本仓库 `main` 分支的最新文章，成功后发布到 [mjzy.tech](https://mjzy.tech)。
+
+这条链路直接调用 Vercel Deploy Hook，不依赖 GitHub Actions 的每小时定时任务。Webhook 监听本仓库所有分支的 push，但网站始终读取 `main`；文章请提交到 `main`。更新需要等待 Vercel 构建及发布完成，推送成功不等于页面立即更新。
+
+触发配置位于本仓库 **Settings → Webhooks**，对应的 Vercel Deploy Hook 名称为 `blog-knowledge-push`，绑定网站仓库的 `master` 分支。Hook URL 属于敏感信息，不应写进文章、代码或公开日志。可在 Vercel 项目 Deployments 中查看构建结果；失败时先检查构建日志和 GitHub Webhook 的 Recent Deliveries。
+
 ## 使用方式
 
 ```bash
